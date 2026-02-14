@@ -1,0 +1,754 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Global Air Quality - 3D Globe</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        body { 
+            background: #030508;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+            color: #e0e0e0;
+            min-height: 100vh;
+            overflow: hidden;
+            touch-action: none; 
+            user-select: none;
+            -webkit-user-select: none;
+        }
+        
+        #canvas {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 0;
+            cursor: grab;
+        }
+
+        #canvas:active {
+            cursor: grabbing;
+        }
+        
+        .header {
+            position: fixed;
+            top: 24px;
+            left: 50%;
+            transform: translateX(-50%);
+            text-align: center;
+            z-index: 100;
+            pointer-events: none;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            align-items: center;
+        }
+
+        .title {
+            font-size: 11px;
+            color: #4a5560;
+            letter-spacing: 3px;
+            text-transform: lowercase;
+            text-decoration: none;
+            pointer-events: auto;
+        }
+
+        .status {
+            display: flex;
+            gap: 12px;
+            font-size: 10px;
+            color: #4a5560;
+            letter-spacing: 1px;
+            text-transform: lowercase;
+            align-items: center;
+            opacity: 0;
+            transition: opacity 1s ease;
+        }
+        
+        .status.visible {
+            opacity: 1;
+        }
+
+        .status-item {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            text-decoration: none;
+            color: #4a5560;
+            pointer-events: auto;
+        }
+
+        .live-dot {
+            width: 4px;
+            height: 4px;
+            background: #22c55e;
+            border-radius: 50%;
+            box-shadow: 0 0 8px #22c55e;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0% { opacity: 0.5; transform: scale(1); }
+            50% { opacity: 1; transform: scale(1.5); }
+            100% { opacity: 0.5; transform: scale(1); }
+        }
+
+        .separator {
+            color: #2a3540;
+        }
+
+        .legend {
+            position: fixed;
+            bottom: 24px;
+            left: 24px;
+            display: flex;
+            gap: 12px;
+            z-index: 100;
+            pointer-events: none;
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 10px;
+            color: #4a5560;
+            text-transform: lowercase;
+            letter-spacing: 1px;
+        }
+
+        .legend-dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            opacity: 0.8;
+        }
+        
+        .loading {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 10px;
+            color: #4a5560;
+            text-transform: lowercase;
+            letter-spacing: 2px;
+            z-index: 10;
+        }
+        
+        .tooltip {
+            position: fixed;
+            background: rgba(10, 14, 18, 0.9);
+            border: 1px solid rgba(255,255,255,0.05);
+            padding: 8px 12px;
+            border-radius: 4px;
+            pointer-events: none;
+            z-index: 100;
+            backdrop-filter: blur(8px);
+            box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+            transition: opacity 0.2s;
+            opacity: 0;
+            transform: translate(-50%, -100%);
+            margin-top: -15px;
+            text-align: center;
+        }
+        
+        .tooltip.visible {
+            opacity: 1;
+        }
+        
+        .city-name {
+            font-size: 10px;
+            color: #888;
+            letter-spacing: 1px;
+            margin-bottom: 2px;
+            text-transform: uppercase;
+        }
+        
+        .aqi-val {
+            font-size: 14px;
+            font-weight: 400;
+            color: #fff;
+        }
+
+        .hidden { display: none; }
+        
+        @media (max-width: 600px) {
+            .legend { display: none; }
+        }
+    </style>
+    
+    <!-- Dependencies for Globe Rendering -->
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <script src="https://unpkg.com/topojson-client@3"></script>
+</head>
+<body>
+    <div class="header">
+        <a href="https://dr.eamer.dev" class="title">global air quality (3d)</a>
+        <div class="status" id="status-bar">
+            <a href="https://open-meteo.com/" target="_blank" class="status-item">
+                <div class="live-dot"></div>
+                <span>live</span>
+            </a>
+            <div class="separator">/</div>
+            <div class="status-item">
+                <span>avg</span>
+                <span id="global-avg" style="color: #e0e0e0">--</span>
+            </div>
+        </div>
+    </div>
+
+    <canvas id="canvas"></canvas>
+    
+    <div id="tooltip" class="tooltip">
+        <div class="city-name"></div>
+        <div class="aqi-val"></div>
+    </div>
+    
+    <div class="loading" id="loading">initializing...</div>
+    
+    <div class="legend" id="legend">
+        <div class="legend-item"><div class="legend-dot" style="background:#22c55e"></div>good</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#eab308"></div>moderate</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#ef4444"></div>unhealthy</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#7c3aed"></div>hazardous</div>
+    </div>
+
+    <script>
+    // Constants
+    const CITIES = [
+        // North America
+        { name: 'New York', lat: 40.7128, lon: -74.0060 },
+        { name: 'Los Angeles', lat: 34.0522, lon: -118.2437 },
+        { name: 'Chicago', lat: 41.8781, lon: -87.6298 },
+        { name: 'Houston', lat: 29.7604, lon: -95.3698 },
+        { name: 'Toronto', lat: 43.6532, lon: -79.3832 },
+        { name: 'Mexico City', lat: 19.4326, lon: -99.1332 },
+        { name: 'San Francisco', lat: 37.7749, lon: -122.4194 },
+        { name: 'Miami', lat: 25.7617, lon: -80.1918 },
+        { name: 'Vancouver', lat: 49.2827, lon: -123.1207 },
+        { name: 'Montreal', lat: 45.5017, lon: -73.5673 },
+        
+        // South America
+        { name: 'São Paulo', lat: -23.5505, lon: -46.6333 },
+        { name: 'Buenos Aires', lat: -34.6037, lon: -58.3816 },
+        { name: 'Lima', lat: -12.0464, lon: -77.0428 },
+        { name: 'Bogotá', lat: 4.7110, lon: -74.0721 },
+        { name: 'Santiago', lat: -33.4489, lon: -70.6693 },
+        { name: 'Rio de Janeiro', lat: -22.9068, lon: -43.1729 },
+        
+        // Europe
+        { name: 'London', lat: 51.5074, lon: -0.1278 },
+        { name: 'Paris', lat: 48.8566, lon: 2.3522 },
+        { name: 'Berlin', lat: 52.5200, lon: 13.4050 },
+        { name: 'Madrid', lat: 40.4168, lon: -3.7038 },
+        { name: 'Rome', lat: 41.9028, lon: 12.4964 },
+        { name: 'Moscow', lat: 55.7558, lon: 37.6173 },
+        { name: 'Istanbul', lat: 41.0082, lon: 28.9784 },
+        { name: 'Amsterdam', lat: 52.3676, lon: 4.9041 },
+        { name: 'Warsaw', lat: 52.2297, lon: 21.0122 },
+        { name: 'Kiev', lat: 50.4501, lon: 30.5234 },
+        { name: 'Stockholm', lat: 59.3293, lon: 18.0686 },
+        
+        // Africa
+        { name: 'Cairo', lat: 30.0444, lon: 31.2357 },
+        { name: 'Lagos', lat: 6.5244, lon: 3.3792 },
+        { name: 'Johannesburg', lat: -26.2041, lon: 28.0473 },
+        { name: 'Nairobi', lat: -1.2921, lon: 36.8219 },
+        { name: 'Kinshasa', lat: -4.4419, lon: 15.2663 },
+        { name: 'Casablanca', lat: 33.5731, lon: -7.5898 },
+        
+        // Middle East
+        { name: 'Dubai', lat: 25.2048, lon: 55.2708 },
+        { name: 'Riyadh', lat: 24.7136, lon: 46.6753 },
+        { name: 'Tehran', lat: 35.6892, lon: 51.3890 },
+        { name: 'Baghdad', lat: 33.3152, lon: 44.3661 },
+        { name: 'Tel Aviv', lat: 32.0853, lon: 34.7818 },
+        
+        // Asia
+        { name: 'Tokyo', lat: 35.6762, lon: 139.6503 },
+        { name: 'Beijing', lat: 39.9042, lon: 116.4074 },
+        { name: 'Shanghai', lat: 31.2304, lon: 121.4737 },
+        { name: 'Delhi', lat: 28.7041, lon: 77.1025 },
+        { name: 'Mumbai', lat: 19.0760, lon: 72.8777 },
+        { name: 'Seoul', lat: 37.5665, lon: 126.9780 },
+        { name: 'Bangkok', lat: 13.7563, lon: 100.5018 },
+        { name: 'Jakarta', lat: -6.2088, lon: 106.8456 },
+        { name: 'Karachi', lat: 24.8607, lon: 67.0011 },
+        { name: 'Dhaka', lat: 23.8103, lon: 90.4125 },
+        { name: 'Osaka', lat: 34.6937, lon: 135.5023 },
+        { name: 'Manila', lat: 14.5995, lon: 120.9842 },
+        { name: 'Ho Chi Minh', lat: 10.8231, lon: 106.6297 },
+        { name: 'Taipei', lat: 25.0330, lon: 121.5654 },
+        { name: 'Hong Kong', lat: 22.3193, lon: 114.1694 },
+        { name: 'Singapore', lat: 1.3521, lon: 103.8198 },
+        { name: 'Kuala Lumpur', lat: 3.1390, lon: 101.6869 },
+        { name: 'Bengaluru', lat: 12.9716, lon: 77.5946 },
+        
+        // Oceania
+        { name: 'Sydney', lat: -33.8688, lon: 151.2093 },
+        { name: 'Melbourne', lat: -37.8136, lon: 144.9631 },
+        { name: 'Auckland', lat: -36.8485, lon: 174.7633 }
+    ];
+
+    let cityData = [];
+    let particles = [];
+    let landData = null;
+    
+    // Viewport State
+    let view = {
+        zoom: 1, 
+        rotationX: -20, // Initial Pitch (degrees)
+        rotationY: 0,   // Initial Yaw (degrees)
+        isDragging: false,
+        lastX: 0,
+        lastY: 0
+    };
+    
+    const GLOBE_RADIUS = 250; 
+
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const tooltip = document.getElementById('tooltip');
+
+    // D3 Projection for Coastlines and Base Geometry
+    const projection = d3.geoOrthographic()
+        .scale(GLOBE_RADIUS)
+        .translate([0, 0]) // We'll translate context, not projection, for center
+        .clipAngle(90);
+
+    const path = d3.geoPath(projection, ctx);
+
+    // ---------------------------------------------------------
+    // 3D Math Helper (for particles above surface)
+    // ---------------------------------------------------------
+
+    function latLonToVector3(lat, lon, radius) {
+        const phi = (90 - lat) * (Math.PI / 180);
+        const theta = (lon + 180) * (Math.PI / 180);
+        const x = -(radius * Math.sin(phi) * Math.cos(theta));
+        const z = (radius * Math.sin(phi) * Math.sin(theta));
+        const y = (radius * Math.cos(phi));
+        return { x, y, z };
+    }
+
+    function rotateVector(v, rotX, rotY) {
+        // rotY = Yaw (around Y axis)
+        // rotX = Pitch (around X axis)
+        // Convert degrees to radians
+        const ry = rotY * (Math.PI / 180);
+        const rx = rotX * (Math.PI / 180);
+
+        // Rotate around Y
+        let x = v.x * Math.cos(ry) - v.z * Math.sin(ry);
+        let z = v.x * Math.sin(ry) + v.z * Math.cos(ry);
+        let y = v.y;
+        
+        // Rotate around X
+        let y_new = y * Math.cos(rx) - z * Math.sin(rx);
+        let z_new = y * Math.sin(rx) + z * Math.cos(rx);
+        
+        return { x, y: y_new, z: z_new };
+    }
+
+    function project3D(v, width, height, scale) {
+        // Orthographic projection
+        const r = scale; 
+        const x = v.x * r + width / 2;
+        const y = v.y * r + height / 2; // Flip Y? No, canvas y is down.
+        // v.y is up in 3D? Standard: Y up. Canvas: Y down. 
+        // Our latLonToVector3 has Y = radius * cos(phi). North Pole (phi=0) -> Y=+R. 
+        // So +Y is Up (North).
+        // On canvas, North should be Up (low Y). So we need to subtract v.y?
+        // Let's negate y in projection.
+        return { 
+            x: v.x * r + width / 2, 
+            y: -v.y * r + height / 2, 
+            scale: r
+        };
+    }
+
+    // ---------------------------------------------------------
+    // Setup
+    // ---------------------------------------------------------
+
+    function resize() {
+        const dpr = window.devicePixelRatio || 1;
+        canvas.width = window.innerWidth * dpr;
+        canvas.height = window.innerHeight * dpr;
+        ctx.scale(dpr, dpr);
+        canvas.style.width = window.innerWidth + 'px';
+        canvas.style.height = window.innerHeight + 'px';
+        
+        const minDim = Math.min(window.innerWidth, window.innerHeight);
+        view.zoom = (minDim / (GLOBE_RADIUS * 2.2));
+    }
+    
+    resize();
+    window.addEventListener('resize', () => setTimeout(resize, 100));
+
+    // ---------------------------------------------------------
+    // Interaction
+    // ---------------------------------------------------------
+
+    // Mouse
+    canvas.addEventListener('mousedown', e => { 
+        view.isDragging = true; 
+        view.lastX = e.clientX; 
+        view.lastY = e.clientY; 
+        canvas.style.cursor = 'grabbing';
+    });
+    
+    window.addEventListener('mousemove', e => {
+        if (view.isDragging) {
+            const dx = e.clientX - view.lastX;
+            const dy = e.clientY - view.lastY;
+            
+            // Standard drag: dragging right -> rotates globe right (yaw increases)
+            view.rotationY += dx * 0.5;
+            view.rotationX -= dy * 0.5; // Drag down -> tilt up
+            
+            view.lastX = e.clientX;
+            view.lastY = e.clientY;
+        } else {
+            checkInteraction(e.clientX, e.clientY);
+        }
+    });
+    
+    window.addEventListener('mouseup', () => {
+        view.isDragging = false;
+        canvas.style.cursor = 'grab';
+    });
+    
+    canvas.addEventListener('wheel', e => { 
+        e.preventDefault();
+        const factor = e.deltaY > 0 ? 0.9 : 1.1;
+        view.zoom = Math.max(0.4, Math.min(3, view.zoom * factor));
+    }, { passive: false });
+
+    // Touch
+    let lastTouchDist = 0;
+    
+    canvas.addEventListener('touchstart', e => {
+        if (e.touches.length === 1) {
+            view.isDragging = true; 
+            view.lastX = e.touches[0].clientX; 
+            view.lastY = e.touches[0].clientY;
+        } else if (e.touches.length === 2) {
+            view.isDragging = false;
+            const t1 = e.touches[0], t2 = e.touches[1];
+            lastTouchDist = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
+        }
+    }, { passive: false });
+
+    canvas.addEventListener('touchmove', e => {
+        e.preventDefault();
+        if (e.touches.length === 1 && view.isDragging) {
+            const dx = e.touches[0].clientX - view.lastX;
+            const dy = e.touches[0].clientY - view.lastY;
+            
+            // FIX: Touch rotation direction
+            // Dragging finger right -> Globe surface should move right -> Rotation Y increases
+            view.rotationY += dx * 0.5;
+            view.rotationX -= dy * 0.5;
+            
+            view.lastX = e.touches[0].clientX;
+            view.lastY = e.touches[0].clientY;
+        } else if (e.touches.length === 2) {
+            const t1 = e.touches[0], t2 = e.touches[1];
+            const dist = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
+            const scale = dist / lastTouchDist;
+            view.zoom = Math.max(0.4, Math.min(3, view.zoom * scale));
+            lastTouchDist = dist;
+        }
+    }, { passive: false });
+
+    // ---------------------------------------------------------
+    // Hit Testing
+    // ---------------------------------------------------------
+
+    function checkInteraction(mx, my) {
+        let nearest = null;
+        let minDist = 30; 
+
+        cityData.forEach(city => {
+            const v = latLonToVector3(city.lat, city.lon, GLOBE_RADIUS);
+            const rv = rotateVector(v, view.rotationX, view.rotationY); // Use -rotX?
+            
+            // D3 rotation is [yaw, -pitch, roll] relative to standard model?
+            // Actually let's just reuse our project3D logic for particles
+            
+            if (rv.z > 0) {
+                const p = project3D(rv, window.innerWidth, window.innerHeight, view.zoom);
+                const d = Math.hypot(mx - p.x, my - p.y);
+                if (d < minDist) {
+                    minDist = d;
+                    nearest = city;
+                }
+            }
+        });
+
+        if (nearest) {
+            tooltip.querySelector('.city-name').textContent = nearest.name;
+            tooltip.querySelector('.aqi-val').textContent = `${nearest.aqi} AQI`;
+            tooltip.style.left = mx + 'px';
+            tooltip.style.top = (my - 20) + 'px';
+            tooltip.classList.add('visible');
+            canvas.style.cursor = 'pointer';
+        } else {
+            tooltip.classList.remove('visible');
+            if (!view.isDragging) canvas.style.cursor = 'grab';
+        }
+    }
+
+    // ---------------------------------------------------------
+    // Data Loading
+    // ---------------------------------------------------------
+
+    function getAQI(aqi) {
+        if (aqi <= 50) return { color: [34, 197, 94], class: 'aqi-good', status: 'Good' };
+        if (aqi <= 100) return { color: [234, 179, 8], class: 'aqi-moderate', status: 'Moderate' };
+        if (aqi <= 150) return { color: [249, 115, 22], class: 'aqi-sensitive', status: 'Sensitive' };
+        if (aqi <= 200) return { color: [239, 68, 68], class: 'aqi-unhealthy', status: 'Unhealthy' };
+        if (aqi <= 300) return { color: [220, 38, 38], class: 'aqi-very-unhealthy', status: 'Very Unhealthy' };
+        return { color: [124, 58, 237], class: 'aqi-hazardous', status: 'Hazardous' };
+    }
+
+    async function fetchData() {
+        // Load Map Data (Non-blocking)
+        fetch('./world-110m.json')
+            .then(r => r.json())
+            .then(world => {
+                landData = topojson.feature(world, world.objects.land);
+            })
+            .catch(e => console.warn("Could not load map contours", e));
+
+        const CHUNK_SIZE = 50;
+        const results = [];
+        for (let i = 0; i < CITIES.length; i += CHUNK_SIZE) {
+            const batch = CITIES.slice(i, i + CHUNK_SIZE);
+            const lats = batch.map(c => c.lat).join(',');
+            const lons = batch.map(c => c.lon).join(',');
+            try {
+                const url = `https://air-quality-api.open-meteo.com/v1/air-quality?latitude=${lats}&longitude=${lons}&current=us_aqi`;
+                const res = await fetch(url);
+                const data = await res.json();
+                if (Array.isArray(data)) {
+                    data.forEach((d, idx) => results.push({ ...batch[idx], aqi: d.current?.us_aqi || 10 })); // Default to 10 if 0/null
+                } else if (data.current) {
+                    results.push({ ...batch[0], aqi: data.current.us_aqi || 10 });
+                }
+            } catch (e) {
+                batch.forEach(c => results.push({ ...c, aqi: 10 })); // Fallback
+            }
+            if (i + CHUNK_SIZE < CITIES.length) await new Promise(r => setTimeout(r, 100));
+        }
+        
+        cityData = results.sort((a, b) => b.aqi - a.aqi);
+        
+        // Avg
+        if (cityData.length > 0) {
+            const avg = Math.round(cityData.reduce((s, c) => s + c.aqi, 0) / cityData.length);
+            const avgInfo = getAQI(avg);
+            const avgEl = document.getElementById('global-avg');
+            if (avgEl) {
+                avgEl.textContent = avg;
+                avgEl.style.color = `rgb(${avgInfo.color.join(',')})`;
+            }
+            document.getElementById('status-bar').classList.add('visible');
+        }
+        
+        initParticles();
+        document.getElementById('loading').classList.add('hidden');
+        // render() is already running in loop
+    }
+
+    function initParticles() {
+        particles = [];
+        cityData.forEach(city => {
+            const info = getAQI(city.aqi);
+            const count = 40 + Math.floor(city.aqi * 0.8); 
+            const baseV = latLonToVector3(city.lat, city.lon, GLOBE_RADIUS);
+            
+            for (let i = 0; i < count; i++) {
+                const offsetAmount = 25; 
+                const rx = (Math.random() - 0.5) * offsetAmount;
+                const ry = (Math.random() - 0.5) * offsetAmount;
+                const rz = (Math.random() - 0.5) * offsetAmount;
+                
+                const px = baseV.x + rx;
+                const py = baseV.y + ry;
+                const pz = baseV.z + rz;
+                
+                // Normalize to radius + random altitude
+                const len = Math.sqrt(px*px + py*py + pz*pz);
+                const altitude = 10 + Math.random() * 30; 
+                const scale = (GLOBE_RADIUS + altitude) / len;
+                
+                particles.push({
+                    baseV: baseV, 
+                    x: px * scale,
+                    y: py * scale,
+                    z: pz * scale,
+                    vx: (Math.random() - 0.5) * 0.5,
+                    vy: (Math.random() - 0.5) * 0.5,
+                    vz: (Math.random() - 0.5) * 0.5,
+                    color: info.color,
+                    size: 1 + Math.random() * 3,
+                    alpha: 0.1 + Math.random() * 0.4,
+                    aqi: city.aqi
+                });
+            }
+        });
+    }
+
+    function render() {
+        ctx.fillStyle = '#030508';
+        ctx.fillRect(0, 0, canvas.width / window.devicePixelRatio, canvas.height / window.devicePixelRatio);
+        
+        const width = window.innerWidth;
+        const height = window.innerHeight;
+        const cx = width / 2;
+        const cy = height / 2;
+
+        // 1. Setup D3 Projection for Land
+        // D3 Orthographic rotate is [Yaw, Pitch, Roll] in degrees
+        // Canvas coordinate system has inverted Y relative to D3's "North Up" expectation?
+        // Actually D3 defaults to North Up.
+        projection
+            .rotate([view.rotationY, -view.rotationX])
+            .scale(GLOBE_RADIUS * view.zoom)
+            .translate([cx, cy]);
+
+        // 2. Draw Land Contours
+        if (landData) {
+            ctx.beginPath();
+            path(landData);
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
+            ctx.lineWidth = 1 * view.zoom;
+            ctx.stroke();
+        }
+
+        // Draw Globe Edge
+        ctx.beginPath();
+        path({type: "Sphere"});
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
+        ctx.lineWidth = 1;
+        ctx.stroke();
+
+        // 3. Render Particles
+        // We use our own math for particles to keep physics independent
+        // BUT we must match the rotation of D3
+        
+        const renderList = [];
+
+        particles.forEach(p => {
+            // Physics
+            const dx = p.baseV.x - p.x;
+            const dy = p.baseV.y - p.y;
+            const dz = p.baseV.z - p.z;
+            
+            p.vx += dx * 0.005;
+            p.vy += dy * 0.005;
+            p.vz += dz * 0.005;
+            
+            p.vx += (Math.random() - 0.5) * 0.2;
+            p.vy += (Math.random() - 0.5) * 0.2;
+            p.vz += (Math.random() - 0.5) * 0.2;
+            
+            p.vx *= 0.94;
+            p.vy *= 0.94;
+            p.vz *= 0.94;
+            
+            p.x += p.vx;
+            p.y += p.vy;
+            p.z += p.vz;
+            
+            const len = Math.sqrt(p.x*p.x + p.y*p.y + p.z*p.z);
+            if (len < GLOBE_RADIUS) {
+                const s = (GLOBE_RADIUS + 5) / len;
+                p.x *= s; p.y *= s; p.z *= s;
+            }
+
+            // Rotate
+            // Our helper rotateVector uses Y=Yaw, X=Pitch radians.
+            // D3 uses degrees. view.rotationX/Y are degrees now? 
+            // Wait, in previous code I used radians. In this code:
+            // "view.rotationY += dx * 0.5" -> This is degrees effectively.
+            // But rotateVector converts to radians.
+            
+            const rv = rotateVector(p, view.rotationX, view.rotationY);
+            
+            if (rv.z > 0) { 
+                const proj = project3D(rv, width, height, view.zoom);
+                renderList.push({
+                    type: 'particle',
+                    x: proj.x,
+                    y: proj.y,
+                    z: rv.z,
+                    size: p.size * view.zoom,
+                    color: p.color,
+                    alpha: p.alpha
+                });
+            }
+        });
+
+        // Add City Labels
+        cityData.forEach(city => {
+            const v = latLonToVector3(city.lat, city.lon, GLOBE_RADIUS);
+            const rv = rotateVector(v, view.rotationX, view.rotationY);
+            
+            if (rv.z > 0) {
+                const proj = project3D(rv, width, height, view.zoom);
+                renderList.push({
+                    type: 'label',
+                    text: city.name.toLowerCase(),
+                    x: proj.x,
+                    y: proj.y,
+                    z: rv.z, 
+                    aqi: city.aqi
+                });
+            }
+        });
+
+        renderList.sort((a, b) => a.z - b.z);
+
+        renderList.forEach(item => {
+            if (item.type === 'particle') {
+                ctx.beginPath();
+                ctx.arc(item.x, item.y, Math.max(0.5, item.size), 0, Math.PI * 2);
+                const edgeFade = Math.min(1, (item.z + 50) / 100); 
+                ctx.fillStyle = `rgba(${item.color[0]}, ${item.color[1]}, ${item.color[2]}, ${item.alpha * edgeFade})`;
+                ctx.fill();
+            } else if (item.type === 'label') {
+                const isVisible = view.zoom > 1.0 || item.aqi > 150;
+                if (isVisible) {
+                    ctx.fillStyle = 'rgba(255, 255, 255, 0.5)'; // Brighter labels
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    const fontSize = Math.max(10, Math.min(14, 10 * view.zoom));
+                    ctx.font = `500 ${fontSize}px -apple-system, BlinkMacSystemFont, sans-serif`;
+                    
+                    // Shadow for readability
+                    ctx.shadowColor = 'rgba(0,0,0,0.8)';
+                    ctx.shadowBlur = 4;
+                    ctx.fillText(item.text, item.x, item.y);
+                    ctx.shadowBlur = 0;
+                }
+            }
+        });
+        
+        if (!view.isDragging) {
+            view.rotationY += 0.1; // Slower auto-rotate (degrees)
+        }
+        
+        requestAnimationFrame(render);
+    }
+
+    fetchData();
+    render();
+    </script>
+</body>
+</html>

@@ -1,0 +1,452 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Air Quality Attractor</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { 
+            background: #030508;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+            color: #e0e0e0;
+            overflow: hidden;
+            touch-action: none; 
+        }
+        #canvas {
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            cursor: grab;
+        }
+        #canvas:active { cursor: grabbing; }
+        
+        .header {
+            position: fixed;
+            top: 24px; left: 50%; transform: translateX(-50%);
+            text-align: center; z-index: 100; pointer-events: none;
+            display: flex; flex-direction: column; gap: 8px;
+        }
+        .title {
+            font-size: 11px; color: #4a5560; letter-spacing: 3px; text-transform: lowercase;
+            text-decoration: none; pointer-events: auto;
+        }
+        .subtitle {
+            font-size: 10px; color: #3a4550; letter-spacing: 1px; text-transform: lowercase;
+        }
+        
+        .tooltip {
+            position: fixed; background: rgba(10, 14, 18, 0.9);
+            border: 1px solid rgba(255,255,255,0.05); padding: 8px 12px;
+            border-radius: 4px; pointer-events: none; z-index: 100;
+            backdrop-filter: blur(8px); opacity: 0; transition: opacity 0.2s;
+            transform: translate(-50%, -100%); margin-top: -15px; text-align: center;
+        }
+        .tooltip.visible { opacity: 1; }
+        .city-name { font-size: 10px; color: #888; letter-spacing: 1px; margin-bottom: 2px; text-transform: uppercase; }
+        .aqi-val { font-size: 14px; font-weight: 400; color: #fff; }
+        
+        .loading {
+            position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            font-size: 10px; color: #4a5560; letter-spacing: 2px;
+        }
+        .hidden { display: none; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <a href="https://dr.eamer.dev" class="title">air quality attractor</a>
+        <div class="subtitle">local chaos = global map</div>
+    </div>
+
+    <canvas id="canvas"></canvas>
+
+    <div id="tooltip" class="tooltip">
+        <div class="city-name"></div>
+        <div class="aqi-val"></div>
+    </div>
+    <div class="loading" id="loading">initializing...</div>
+
+<script>
+    // Constants
+    const SIGMA = 10;
+    const BETA = 8/3;
+    const DT = 0.005; // Time step
+    const WORLD_W = 2000;
+    const WORLD_H = 1000;
+
+    const CITIES = [
+        { name: 'New York', lat: 40.7128, lon: -74.0060 },
+        { name: 'Los Angeles', lat: 34.0522, lon: -118.2437 },
+        { name: 'Chicago', lat: 41.8781, lon: -87.6298 },
+        { name: 'Houston', lat: 29.7604, lon: -95.3698 },
+        { name: 'Toronto', lat: 43.6532, lon: -79.3832 },
+        { name: 'Mexico City', lat: 19.4326, lon: -99.1332 },
+        { name: 'San Francisco', lat: 37.7749, lon: -122.4194 },
+        { name: 'Miami', lat: 25.7617, lon: -80.1918 },
+        { name: 'Vancouver', lat: 49.2827, lon: -123.1207 },
+        { name: 'Montreal', lat: 45.5017, lon: -73.5673 },
+        { name: 'São Paulo', lat: -23.5505, lon: -46.6333 },
+        { name: 'Buenos Aires', lat: -34.6037, lon: -58.3816 },
+        { name: 'Lima', lat: -12.0464, lon: -77.0428 },
+        { name: 'Bogotá', lat: 4.7110, lon: -74.0721 },
+        { name: 'Santiago', lat: -33.4489, lon: -70.6693 },
+        { name: 'Rio de Janeiro', lat: -22.9068, lon: -43.1729 },
+        { name: 'London', lat: 51.5074, lon: -0.1278 },
+        { name: 'Paris', lat: 48.8566, lon: 2.3522 },
+        { name: 'Berlin', lat: 52.5200, lon: 13.4050 },
+        { name: 'Madrid', lat: 40.4168, lon: -3.7038 },
+        { name: 'Rome', lat: 41.9028, lon: 12.4964 },
+        { name: 'Moscow', lat: 55.7558, lon: 37.6173 },
+        { name: 'Istanbul', lat: 41.0082, lon: 28.9784 },
+        { name: 'Amsterdam', lat: 52.3676, lon: 4.9041 },
+        { name: 'Warsaw', lat: 52.2297, lon: 21.0122 },
+        { name: 'Kiev', lat: 50.4501, lon: 30.5234 },
+        { name: 'Stockholm', lat: 59.3293, lon: 18.0686 },
+        { name: 'Cairo', lat: 30.0444, lon: 31.2357 },
+        { name: 'Lagos', lat: 6.5244, lon: 3.3792 },
+        { name: 'Johannesburg', lat: -26.2041, lon: 28.0473 },
+        { name: 'Nairobi', lat: -1.2921, lon: 36.8219 },
+        { name: 'Kinshasa', lat: -4.4419, lon: 15.2663 },
+        { name: 'Casablanca', lat: 33.5731, lon: -7.5898 },
+        { name: 'Dubai', lat: 25.2048, lon: 55.2708 },
+        { name: 'Riyadh', lat: 24.7136, lon: 46.6753 },
+        { name: 'Tehran', lat: 35.6892, lon: 51.3890 },
+        { name: 'Baghdad', lat: 33.3152, lon: 44.3661 },
+        { name: 'Tel Aviv', lat: 32.0853, lon: 34.7818 },
+        { name: 'Tokyo', lat: 35.6762, lon: 139.6503 },
+        { name: 'Beijing', lat: 39.9042, lon: 116.4074 },
+        { name: 'Shanghai', lat: 31.2304, lon: 121.4737 },
+        { name: 'Delhi', lat: 28.7041, lon: 77.1025 },
+        { name: 'Mumbai', lat: 19.0760, lon: 72.8777 },
+        { name: 'Seoul', lat: 37.5665, lon: 126.9780 },
+        { name: 'Bangkok', lat: 13.7563, lon: 100.5018 },
+        { name: 'Jakarta', lat: -6.2088, lon: 106.8456 },
+        { name: 'Karachi', lat: 24.8607, lon: 67.0011 },
+        { name: 'Dhaka', lat: 23.8103, lon: 90.4125 },
+        { name: 'Osaka', lat: 34.6937, lon: 135.5023 },
+        { name: 'Manila', lat: 14.5995, lon: 120.9842 },
+        { name: 'Ho Chi Minh', lat: 10.8231, lon: 106.6297 },
+        { name: 'Taipei', lat: 25.0330, lon: 121.5654 },
+        { name: 'Hong Kong', lat: 22.3193, lon: 114.1694 },
+        { name: 'Singapore', lat: 1.3521, lon: 103.8198 },
+        { name: 'Kuala Lumpur', lat: 3.1390, lon: 101.6869 },
+        { name: 'Bengaluru', lat: 12.9716, lon: 77.5946 },
+        { name: 'Sydney', lat: -33.8688, lon: 151.2093 },
+        { name: 'Melbourne', lat: -37.8136, lon: 144.9631 },
+        { name: 'Auckland', lat: -36.8485, lon: 174.7633 }
+    ];
+
+    let cityData = [];
+    let particles = [];
+    
+    // Viewport State (Copied from map view for consistency)
+    let view = {
+        x: 0, y: 0,
+        zoom: 0.8, minZoom: 0.2, maxZoom: 6,
+        width: 0, height: 0,
+        isDragging: false, lastX: 0, lastY: 0
+    };
+    
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const tooltip = document.getElementById('tooltip');
+
+    // ---------------------------------------------------------
+    // Projection (Map)
+    // ---------------------------------------------------------
+
+    function latLonToWorld(lat, lon) {
+        // Standard equirectangular for placement
+        const x = ((lon + 180) / 360) * WORLD_W;
+        const y = ((90 - lat) / 180) * WORLD_H;
+        return { x, y };
+    }
+
+    function worldToScreen(wx, wy) {
+        const screenCX = view.width / 2;
+        const screenCY = view.height / 2;
+        const sx = screenCX + (wx - WORLD_W/2) * view.zoom + view.x;
+        const sy = screenCY + (wy - WORLD_H/2) * view.zoom + view.y;
+        return { x: sx, y: sy };
+    }
+
+    // ---------------------------------------------------------
+    // Setup & Interaction
+    // ---------------------------------------------------------
+
+    function resize() {
+        const dpr = window.devicePixelRatio || 1;
+        canvas.width = window.innerWidth * dpr;
+        canvas.height = window.innerHeight * dpr;
+        ctx.scale(dpr, dpr);
+        canvas.style.width = window.innerWidth + 'px';
+        canvas.style.height = window.innerHeight + 'px';
+        view.width = window.innerWidth;
+        view.height = window.innerHeight;
+    }
+    resize();
+    window.addEventListener('resize', () => setTimeout(resize, 100));
+
+    function handleZoom(delta, centerX, centerY) {
+        const factor = delta > 0 ? 0.9 : 1.1; 
+        const newZoom = Math.min(view.maxZoom, Math.max(view.minZoom, view.zoom * factor));
+        if (newZoom !== view.zoom) {
+            const wx = ((centerX - view.width/2 - view.x) / view.zoom);
+            const wy = ((centerY - view.height/2 - view.y) / view.zoom);
+            view.zoom = newZoom;
+            view.x = centerX - view.width/2 - (wx * view.zoom);
+            view.y = centerY - view.height/2 - (wy * view.zoom);
+        }
+    }
+
+    canvas.addEventListener('mousedown', e => { view.isDragging = true; view.lastX = e.clientX; view.lastY = e.clientY; });
+    window.addEventListener('mousemove', e => {
+        if (view.isDragging) {
+            view.x += e.clientX - view.lastX;
+            view.y += e.clientY - view.lastY;
+            view.lastX = e.clientX;
+            view.lastY = e.clientY;
+            checkInteraction(e.clientX, e.clientY);
+        } else {
+            checkInteraction(e.clientX, e.clientY);
+        }
+    });
+    window.addEventListener('mouseup', () => view.isDragging = false);
+    
+    canvas.addEventListener('wheel', e => { 
+        e.preventDefault(); 
+        const delta = Math.sign(e.deltaY) * 100;
+        handleZoom(delta, e.clientX, e.clientY); 
+    }, { passive: false });
+
+    // Touch
+    let lastTouchDist = 0;
+    canvas.addEventListener('touchstart', e => {
+        if (e.touches.length === 1) {
+            view.isDragging = true; view.lastX = e.touches[0].clientX; view.lastY = e.touches[0].clientY;
+            checkInteraction(e.touches[0].clientX, e.touches[0].clientY);
+        } else if (e.touches.length === 2) {
+            view.isDragging = false;
+            const t1 = e.touches[0], t2 = e.touches[1];
+            lastTouchDist = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
+        }
+    }, { passive: false });
+
+    canvas.addEventListener('touchmove', e => {
+        e.preventDefault();
+        if (e.touches.length === 1 && view.isDragging) {
+            view.x += e.touches[0].clientX - view.lastX;
+            view.y += e.touches[0].clientY - view.lastY;
+            view.lastX = e.touches[0].clientX;
+            view.lastY = e.touches[0].clientY;
+        } else if (e.touches.length === 2) {
+            const t1 = e.touches[0], t2 = e.touches[1];
+            const dist = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
+            const cx = (t1.clientX + t2.clientX) / 2;
+            const cy = (t1.clientY + t2.clientY) / 2;
+            const newScale = dist / lastTouchDist;
+            const targetZoom = view.zoom * newScale;
+            const clampedZoom = Math.min(view.maxZoom, Math.max(view.minZoom, targetZoom));
+            
+            if (clampedZoom !== view.zoom) {
+                 const wx = ((cx - view.width/2 - view.x) / view.zoom);
+                 const wy = ((cy - view.height/2 - view.y) / view.zoom);
+                 view.zoom = clampedZoom;
+                 view.x = cx - view.width/2 - (wx * view.zoom);
+                 view.y = cy - view.height/2 - (wy * view.zoom);
+            }
+            lastTouchDist = dist;
+        }
+    }, { passive: false });
+
+    function checkInteraction(x, y) {
+        let nearest = null;
+        let minDist = 40;
+
+        cityData.forEach(city => {
+            const wPos = latLonToWorld(city.lat, city.lon);
+            const sPos = worldToScreen(wPos.x, wPos.y);
+            const d = Math.hypot(x - sPos.x, y - sPos.y);
+            if (d < minDist) {
+                minDist = d;
+                nearest = city;
+            }
+        });
+
+        if (nearest) {
+            tooltip.querySelector('.city-name').textContent = nearest.name;
+            tooltip.querySelector('.aqi-val').textContent = `${nearest.aqi} AQI (ρ=${Math.round(nearest.rho)})`;
+            const info = getAQI(nearest.aqi);
+            tooltip.querySelector('.aqi-val').style.color = `rgb(${info.r},${info.g},${info.b})`;
+            tooltip.style.left = x + 'px';
+            tooltip.style.top = (y - 20) + 'px';
+            tooltip.classList.add('visible');
+            canvas.style.cursor = 'pointer';
+        } else {
+            tooltip.classList.remove('visible');
+            if (!view.isDragging) canvas.style.cursor = 'grab';
+        }
+    }
+
+    // ---------------------------------------------------------
+    // Data & Simulation
+    // ---------------------------------------------------------
+
+    function getAQI(aqi) {
+        if (aqi <= 50) return { color: [34, 197, 94], r:34, g:197, b:94 };
+        if (aqi <= 100) return { color: [234, 179, 8], r:234, g:179, b:8 };
+        if (aqi <= 150) return { color: [249, 115, 22], r:249, g:115, b:22 };
+        if (aqi <= 200) return { color: [239, 68, 68], r:239, g:68, b:68 };
+        if (aqi <= 300) return { color: [220, 38, 38], r:220, g:38, b:38 };
+        return { color: [124, 58, 237], r:124, g:58, b:237 };
+    }
+
+    async function fetchData() {
+        const CHUNK_SIZE = 50;
+        const results = [];
+        for (let i = 0; i < CITIES.length; i += CHUNK_SIZE) {
+            const batch = CITIES.slice(i, i + CHUNK_SIZE);
+            const lats = batch.map(c => c.lat).join(',');
+            const lons = batch.map(c => c.lon).join(',');
+            try {
+                const res = await fetch(`https://air-quality-api.open-meteo.com/v1/air-quality?latitude=${lats}&longitude=${lons}&current=us_aqi`);
+                const data = await res.json();
+                if (Array.isArray(data)) {
+                    data.forEach((d, idx) => results.push({ ...batch[idx], aqi: d.current?.us_aqi || 0 }));
+                } else if (data.current) {
+                    results.push({ ...batch[0], aqi: data.current.us_aqi || 0 });
+                }
+            } catch (e) {
+                batch.forEach(c => results.push({ ...c, aqi: 0 }));
+            }
+            if (i + CHUNK_SIZE < CITIES.length) await new Promise(r => setTimeout(r, 100));
+        }
+        
+        cityData = results.filter(c => c.aqi > 0).sort((a, b) => b.aqi - a.aqi);
+        
+        // Add Rho for Lorenz
+        cityData.forEach(c => {
+            c.rho = 15 + (c.aqi * 0.15); // Map AQI to chaos parameter
+        });
+
+        initParticles();
+        document.getElementById('loading').classList.add('hidden');
+        render();
+    }
+
+    function initParticles() {
+        particles = [];
+        cityData.forEach(city => {
+            const info = getAQI(city.aqi);
+            
+            // Multiple particles per city to form the attractor cloud
+            // Reduced count slightly for performance with trails
+            const count = 20; 
+            
+            // City center in map coords
+            const center = latLonToWorld(city.lat, city.lon);
+
+            for (let i = 0; i < count; i++) {
+                // Initialize random state for Lorenz
+                // Values around 1-10 are good for Lorenz start
+                const lx = (Math.random() - 0.5) * 10;
+                const ly = (Math.random() - 0.5) * 10;
+                const lz = 10 + Math.random() * 10;
+
+                particles.push({
+                    city: city, // Reference to parent city
+                    lx, ly, lz, // Local Lorenz coordinates
+                    mapX: center.x, // Fixed map anchor
+                    mapY: center.y,
+                    color: info,
+                    speed: 0.5 + (Math.random() * 0.5) // Slight variance
+                });
+            }
+        });
+    }
+
+    function render() {
+        // Trail effect: Fade out background
+        ctx.fillStyle = 'rgba(3, 5, 8, 0.1)'; 
+        ctx.fillRect(0, 0, canvas.width/window.devicePixelRatio, canvas.height/window.devicePixelRatio);
+        
+        particles.forEach(p => {
+            // 1. Update Lorenz State (Local)
+            // Use city's RHO (Chaos level)
+            const rho = p.city.rho;
+            
+            const dx = (SIGMA * (p.ly - p.lx)) * DT * p.speed;
+            const dy = (p.lx * (rho - p.lz) - p.ly) * DT * p.speed;
+            const dz = (p.lx * p.ly - BETA * p.lz) * DT * p.speed;
+            
+            p.lx += dx;
+            p.ly += dy;
+            p.lz += dz;
+            
+            // 2. Project Local 3D -> Screen
+            // We need to scale the Lorenz coordinates down to fit on the map
+            // Lorenz coords roughly range -20 to 20.
+            // On screen, we want a cluster size of ~50px maybe?
+            // And we can rotate them slowly to look cool?
+            // Let's just project X/Z to Screen X/Y for a top-down view of the butterfly
+            
+            const scale = 2.0; // Size of the attractor relative to map pixels
+            
+            // Local offset
+            const offX = p.lx * scale;
+            const offY = p.lz * scale; // Using Z as Y for "side view" of attractor (butterfly shape)
+            
+            // 3. Combine with Map Position
+            // Map pos needs to be projected to screen space first
+            const screenCenter = worldToScreen(p.city.lon === 0 ? p.mapX : p.mapX, p.mapY); 
+            // Wait, p.mapX is already World Coords. worldToScreen handles Zoom/Pan.
+            
+            const mapScreen = worldToScreen(p.mapX, p.mapY);
+            
+            // If off screen, skip drawing (optimization)
+            if (mapScreen.x < -50 || mapScreen.x > view.width+50 || mapScreen.y < -50 || mapScreen.y > view.height+50) return;
+
+            const finalX = mapScreen.x + offX * Math.sqrt(view.zoom * 0.5); // Scale attractor size with zoom slightly
+            const finalY = mapScreen.y - offY * Math.sqrt(view.zoom * 0.5); // Subtract Y to flip z-axis visually up
+            
+            // Draw
+            ctx.beginPath();
+            ctx.arc(finalX, finalY, 1, 0, Math.PI*2);
+            ctx.fillStyle = `rgb(${p.color.r},${p.color.g},${p.color.b})`;
+            
+            if (p.city.aqi > 150) {
+                ctx.shadowColor = ctx.fillStyle;
+                ctx.shadowBlur = 4;
+                ctx.fill();
+                ctx.shadowBlur = 0;
+            } else {
+                ctx.fill();
+            }
+        });
+        
+        // Draw Labels (only if zoomed)
+        if (view.zoom > 1.0) {
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.font = `10px -apple-system, sans-serif`;
+            
+            cityData.forEach(city => {
+                const center = latLonToWorld(city.lat, city.lon);
+                const s = worldToScreen(center.x, center.y);
+                
+                // Cull
+                if (s.x < -50 || s.x > view.width+50 || s.y < -50 || s.y > view.height+50) return;
+                
+                ctx.fillStyle = 'rgba(255,255,255,0.3)';
+                ctx.fillText(city.name.toLowerCase(), s.x, s.y + 30); // Offset below attractor
+            });
+        }
+
+        requestAnimationFrame(render);
+    }
+
+    fetchData();
+    render();
+</script>
+</body>
+</html>

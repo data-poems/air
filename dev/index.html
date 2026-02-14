@@ -1,0 +1,606 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Global Air Quality</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        body { 
+            background: #030508;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+            color: #e0e0e0;
+            min-height: 100vh;
+            overflow: hidden;
+            touch-action: none; 
+            user-select: none;
+            -webkit-user-select: none;
+        }
+        
+        #canvas {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 0;
+            cursor: grab;
+        }
+
+        #canvas:active {
+            cursor: grabbing;
+        }
+        
+        .header {
+            position: fixed;
+            top: 24px;
+            left: 50%;
+            transform: translateX(-50%);
+            text-align: center;
+            z-index: 100;
+            pointer-events: none;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            align-items: center;
+        }
+
+        .title {
+            font-size: 11px;
+            color: #4a5560;
+            letter-spacing: 3px;
+            text-transform: lowercase;
+        }
+
+        .status {
+            display: flex;
+            gap: 12px;
+            font-size: 10px;
+            color: #4a5560;
+            letter-spacing: 1px;
+            text-transform: lowercase;
+            align-items: center;
+            opacity: 0;
+            transition: opacity 1s ease;
+        }
+        
+        .status.visible {
+            opacity: 1;
+        }
+
+        .status-item {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .live-dot {
+            width: 4px;
+            height: 4px;
+            background: #22c55e;
+            border-radius: 50%;
+            box-shadow: 0 0 8px #22c55e;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0% { opacity: 0.5; transform: scale(1); }
+            50% { opacity: 1; transform: scale(1.5); }
+            100% { opacity: 0.5; transform: scale(1); }
+        }
+
+        .separator {
+            color: #2a3540;
+        }
+
+        .legend {
+            position: fixed;
+            bottom: 24px;
+            left: 24px;
+            display: flex;
+            gap: 12px;
+            z-index: 100;
+            pointer-events: none;
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 10px;
+            color: #4a5560;
+            text-transform: lowercase;
+            letter-spacing: 1px;
+        }
+
+        .legend-dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            opacity: 0.8;
+        }
+        
+        .loading {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 10px;
+            color: #4a5560;
+            text-transform: lowercase;
+            letter-spacing: 2px;
+            z-index: 10;
+        }
+        
+        .tooltip {
+            position: fixed;
+            background: rgba(10, 14, 18, 0.9);
+            border: 1px solid rgba(255,255,255,0.05);
+            padding: 8px 12px;
+            border-radius: 4px;
+            pointer-events: none;
+            z-index: 100;
+            backdrop-filter: blur(8px);
+            box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+            transition: opacity 0.2s;
+            opacity: 0;
+            transform: translate(-50%, -100%);
+            margin-top: -15px;
+            text-align: center;
+        }
+        
+        .tooltip.visible {
+            opacity: 1;
+        }
+        
+        .city-name {
+            font-size: 10px;
+            color: #888;
+            letter-spacing: 1px;
+            margin-bottom: 2px;
+            text-transform: uppercase;
+        }
+        
+        .aqi-val {
+            font-size: 14px;
+            font-weight: 400;
+            color: #fff;
+        }
+
+        .hidden { display: none; }
+        
+        @media (max-width: 600px) {
+            .legend { display: none; }
+        }
+    </style>
+    <style>
+        /* ... existing styles ... */
+        .nav {
+            position: fixed;
+            bottom: 24px;
+            right: 24px; /* Bottom right to balance legend on left */
+            display: flex;
+            gap: 16px;
+            z-index: 100;
+            pointer-events: auto;
+        }
+        .nav a {
+            color: #4a5560;
+            text-decoration: none;
+            font-size: 10px;
+            text-transform: lowercase;
+            letter-spacing: 1px;
+            transition: color 0.2s;
+        }
+        .nav a:hover, .nav a.active {
+            color: #e0e0e0;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <a href="https://dr.eamer.dev" class="title" style="text-decoration: none; cursor: pointer;">global air quality</a>
+        <div class="status" id="status-bar">
+            <a href="https://open-meteo.com/" target="_blank" class="status-item" style="text-decoration: none; cursor: pointer;">
+                <div class="live-dot"></div>
+                <span style="color: #4a5560">live</span>
+            </a>
+            <div class="separator">/</div>
+            <div class="status-item">
+                <span>avg</span>
+                <span id="global-avg" style="color: #e0e0e0">--</span>
+            </div>
+        </div>
+    </div>
+
+    <nav class="nav">
+        <a href="index.html" class="active">map</a>
+        <a href="globe.html">globe</a>
+        <a href="hive.html">hive</a>
+        <a href="attractor.html">attractor</a>
+    </nav>
+
+    <canvas id="canvas"></canvas>
+    
+    <div id="tooltip" class="tooltip">
+        <div class="city-name"></div>
+        <div class="aqi-val"></div>
+    </div>
+    
+    <div class="loading" id="loading">initializing...</div>
+    
+    <div class="legend" id="legend">
+        <div class="legend-item"><div class="legend-dot" style="background:#22c55e"></div>good</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#eab308"></div>moderate</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#ef4444"></div>unhealthy</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#7c3aed"></div>hazardous</div>
+    </div>
+
+    <script>
+    const CITIES = [
+        // North America
+        { name: 'New York', lat: 40.7128, lon: -74.0060 },
+        { name: 'Los Angeles', lat: 34.0522, lon: -118.2437 },
+        { name: 'Chicago', lat: 41.8781, lon: -87.6298 },
+        { name: 'Houston', lat: 29.7604, lon: -95.3698 },
+        { name: 'Toronto', lat: 43.6532, lon: -79.3832 },
+        { name: 'Mexico City', lat: 19.4326, lon: -99.1332 },
+        { name: 'San Francisco', lat: 37.7749, lon: -122.4194 },
+        { name: 'Miami', lat: 25.7617, lon: -80.1918 },
+        { name: 'Vancouver', lat: 49.2827, lon: -123.1207 },
+        { name: 'Montreal', lat: 45.5017, lon: -73.5673 },
+        
+        // South America
+        { name: 'São Paulo', lat: -23.5505, lon: -46.6333 },
+        { name: 'Buenos Aires', lat: -34.6037, lon: -58.3816 },
+        { name: 'Lima', lat: -12.0464, lon: -77.0428 },
+        { name: 'Bogotá', lat: 4.7110, lon: -74.0721 },
+        { name: 'Santiago', lat: -33.4489, lon: -70.6693 },
+        { name: 'Rio de Janeiro', lat: -22.9068, lon: -43.1729 },
+        
+        // Europe
+        { name: 'London', lat: 51.5074, lon: -0.1278 },
+        { name: 'Paris', lat: 48.8566, lon: 2.3522 },
+        { name: 'Berlin', lat: 52.5200, lon: 13.4050 },
+        { name: 'Madrid', lat: 40.4168, lon: -3.7038 },
+        { name: 'Rome', lat: 41.9028, lon: 12.4964 },
+        { name: 'Moscow', lat: 55.7558, lon: 37.6173 },
+        { name: 'Istanbul', lat: 41.0082, lon: 28.9784 },
+        { name: 'Amsterdam', lat: 52.3676, lon: 4.9041 },
+        { name: 'Warsaw', lat: 52.2297, lon: 21.0122 },
+        { name: 'Kiev', lat: 50.4501, lon: 30.5234 },
+        { name: 'Stockholm', lat: 59.3293, lon: 18.0686 },
+        
+        // Africa
+        { name: 'Cairo', lat: 30.0444, lon: 31.2357 },
+        { name: 'Lagos', lat: 6.5244, lon: 3.3792 },
+        { name: 'Johannesburg', lat: -26.2041, lon: 28.0473 },
+        { name: 'Nairobi', lat: -1.2921, lon: 36.8219 },
+        { name: 'Kinshasa', lat: -4.4419, lon: 15.2663 },
+        { name: 'Casablanca', lat: 33.5731, lon: -7.5898 },
+        
+        // Middle East
+        { name: 'Dubai', lat: 25.2048, lon: 55.2708 },
+        { name: 'Riyadh', lat: 24.7136, lon: 46.6753 },
+        { name: 'Tehran', lat: 35.6892, lon: 51.3890 },
+        { name: 'Baghdad', lat: 33.3152, lon: 44.3661 },
+        { name: 'Tel Aviv', lat: 32.0853, lon: 34.7818 },
+        
+        // Asia
+        { name: 'Tokyo', lat: 35.6762, lon: 139.6503 },
+        { name: 'Beijing', lat: 39.9042, lon: 116.4074 },
+        { name: 'Shanghai', lat: 31.2304, lon: 121.4737 },
+        { name: 'Delhi', lat: 28.7041, lon: 77.1025 },
+        { name: 'Mumbai', lat: 19.0760, lon: 72.8777 },
+        { name: 'Seoul', lat: 37.5665, lon: 126.9780 },
+        { name: 'Bangkok', lat: 13.7563, lon: 100.5018 },
+        { name: 'Jakarta', lat: -6.2088, lon: 106.8456 },
+        { name: 'Karachi', lat: 24.8607, lon: 67.0011 },
+        { name: 'Dhaka', lat: 23.8103, lon: 90.4125 },
+        { name: 'Osaka', lat: 34.6937, lon: 135.5023 },
+        { name: 'Manila', lat: 14.5995, lon: 120.9842 },
+        { name: 'Ho Chi Minh', lat: 10.8231, lon: 106.6297 },
+        { name: 'Taipei', lat: 25.0330, lon: 121.5654 },
+        { name: 'Hong Kong', lat: 22.3193, lon: 114.1694 },
+        { name: 'Singapore', lat: 1.3521, lon: 103.8198 },
+        { name: 'Kuala Lumpur', lat: 3.1390, lon: 101.6869 },
+        { name: 'Bengaluru', lat: 12.9716, lon: 77.5946 },
+        
+        // Oceania
+        { name: 'Sydney', lat: -33.8688, lon: 151.2093 },
+        { name: 'Melbourne', lat: -37.8136, lon: 144.9631 },
+        { name: 'Auckland', lat: -36.8485, lon: 174.7633 }
+    ];
+
+    let cityData = [];
+    let particles = [];
+    
+    // Viewport State
+    let view = {
+        x: 0,
+        y: 0,
+        zoom: 0.8,
+        minZoom: 0.2,
+        maxZoom: 6,
+        width: 0,
+        height: 0,
+        isDragging: false,
+        lastX: 0,
+        lastY: 0
+    };
+    
+    const WORLD_W = 2000;
+    const WORLD_H = 1000;
+
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const tooltip = document.getElementById('tooltip');
+
+    function latLonToWorld(lat, lon) {
+        const x = ((lon + 180) / 360) * WORLD_W;
+        const y = ((90 - lat) / 180) * WORLD_H;
+        return { x, y };
+    }
+
+    function worldToScreen(wx, wy) {
+        const screenCX = view.width / 2;
+        const screenCY = view.height / 2;
+        const sx = screenCX + (wx - WORLD_W/2) * view.zoom + view.x;
+        const sy = screenCY + (wy - WORLD_H/2) * view.zoom + view.y;
+        return { x: sx, y: sy };
+    }
+
+    function resize() {
+        const dpr = window.devicePixelRatio || 1;
+        canvas.width = window.innerWidth * dpr;
+        canvas.height = window.innerHeight * dpr;
+        ctx.scale(dpr, dpr);
+        canvas.style.width = window.innerWidth + 'px';
+        canvas.style.height = window.innerHeight + 'px';
+        view.width = window.innerWidth;
+        view.height = window.innerHeight;
+    }
+    
+    resize();
+    window.addEventListener('resize', () => setTimeout(resize, 100));
+
+    function handleZoom(delta, centerX, centerY) {
+        // factor: >1 zooms in, <1 zooms out
+        const factor = delta > 0 ? 0.9 : 1.1; 
+        const newZoom = Math.min(view.maxZoom, Math.max(view.minZoom, view.zoom * factor));
+        if (newZoom !== view.zoom) {
+            const wx = ((centerX - view.width/2 - view.x) / view.zoom);
+            const wy = ((centerY - view.height/2 - view.y) / view.zoom);
+            view.zoom = newZoom;
+            view.x = centerX - view.width/2 - (wx * view.zoom);
+            view.y = centerY - view.height/2 - (wy * view.zoom);
+        }
+    }
+
+    canvas.addEventListener('mousedown', e => { view.isDragging = true; view.lastX = e.clientX; view.lastY = e.clientY; });
+    window.addEventListener('mousemove', e => {
+        if (view.isDragging) {
+            view.x += e.clientX - view.lastX;
+            view.y += e.clientY - view.lastY;
+            view.lastX = e.clientX;
+            view.lastY = e.clientY;
+            checkInteraction(e.clientX, e.clientY);
+        } else {
+             checkInteraction(e.clientX, e.clientY);
+        }
+    });
+    window.addEventListener('mouseup', () => view.isDragging = false);
+    
+    // Normalized Mouse Wheel
+    canvas.addEventListener('wheel', e => { 
+        e.preventDefault(); 
+        const delta = Math.sign(e.deltaY) * 100;
+        handleZoom(delta, e.clientX, e.clientY); 
+    }, { passive: false });
+
+    // Touch Handling (Fixed Pinch Zoom)
+    let lastTouchDist = 0;
+    canvas.addEventListener('touchstart', e => {
+        if (e.touches.length === 1) {
+            view.isDragging = true; view.lastX = e.touches[0].clientX; view.lastY = e.touches[0].clientY;
+            checkInteraction(e.touches[0].clientX, e.touches[0].clientY);
+        } else if (e.touches.length === 2) {
+            view.isDragging = false;
+            const t1 = e.touches[0], t2 = e.touches[1];
+            lastTouchDist = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
+        }
+    }, { passive: false });
+
+    canvas.addEventListener('touchmove', e => {
+        e.preventDefault();
+        if (e.touches.length === 1 && view.isDragging) {
+            view.x += e.touches[0].clientX - view.lastX;
+            view.y += e.touches[0].clientY - view.lastY;
+            view.lastX = e.touches[0].clientX;
+            view.lastY = e.touches[0].clientY;
+        } else if (e.touches.length === 2) {
+            const t1 = e.touches[0], t2 = e.touches[1];
+            const dist = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
+            const cx = (t1.clientX + t2.clientX) / 2;
+            const cy = (t1.clientY + t2.clientY) / 2;
+            
+            // Direct scale ratio zoom
+            const newScale = dist / lastTouchDist;
+            const targetZoom = view.zoom * newScale;
+            const clampedZoom = Math.min(view.maxZoom, Math.max(view.minZoom, targetZoom));
+            
+            if (clampedZoom !== view.zoom) {
+                 const wx = ((cx - view.width/2 - view.x) / view.zoom);
+                 const wy = ((cy - view.height/2 - view.y) / view.zoom);
+                 view.zoom = clampedZoom;
+                 view.x = cx - view.width/2 - (wx * view.zoom);
+                 view.y = cy - view.height/2 - (wy * view.zoom);
+            }
+            lastTouchDist = dist;
+        }
+    }, { passive: false });
+
+    function checkInteraction(x, y) {
+        let nearest = null;
+        let minDist = 30;
+
+        cityData.forEach(city => {
+            const wPos = latLonToWorld(city.lat, city.lon);
+            const sPos = worldToScreen(wPos.x, wPos.y);
+            const d = Math.hypot(x - sPos.x, y - sPos.y);
+            if (d < minDist) {
+                minDist = d;
+                nearest = city;
+            }
+        });
+
+        if (nearest) {
+            tooltip.querySelector('.city-name').textContent = nearest.name;
+            tooltip.querySelector('.aqi-val').textContent = `${nearest.aqi} AQI`;
+            tooltip.style.left = x + 'px';
+            tooltip.style.top = (y - 20) + 'px';
+            tooltip.classList.add('visible');
+            canvas.style.cursor = 'pointer';
+        } else {
+            tooltip.classList.remove('visible');
+            canvas.style.cursor = view.isDragging ? 'grabbing' : 'grab';
+        }
+    }
+
+    function getAQI(aqi) {
+        if (aqi <= 50) return { color: [34, 197, 94], class: 'aqi-good', status: 'Good' };
+        if (aqi <= 100) return { color: [234, 179, 8], class: 'aqi-moderate', status: 'Moderate' };
+        if (aqi <= 150) return { color: [249, 115, 22], class: 'aqi-sensitive', status: 'Sensitive' };
+        if (aqi <= 200) return { color: [239, 68, 68], class: 'aqi-unhealthy', status: 'Unhealthy' };
+        if (aqi <= 300) return { color: [220, 38, 38], class: 'aqi-very-unhealthy', status: 'Very Unhealthy' };
+        return { color: [124, 58, 237], class: 'aqi-hazardous', status: 'Hazardous' };
+    }
+
+    async function fetchData() {
+        const CHUNK_SIZE = 50;
+        const results = [];
+        for (let i = 0; i < CITIES.length; i += CHUNK_SIZE) {
+            const batch = CITIES.slice(i, i + CHUNK_SIZE);
+            const lats = batch.map(c => c.lat).join(',');
+            const lons = batch.map(c => c.lon).join(',');
+            try {
+                const url = `https://air-quality-api.open-meteo.com/v1/air-quality?latitude=${lats}&longitude=${lons}&current=us_aqi`;
+                const res = await fetch(url);
+                const data = await res.json();
+                if (Array.isArray(data)) {
+                    data.forEach((d, idx) => results.push({ ...batch[idx], aqi: d.current?.us_aqi || 0 }));
+                } else if (data.current) {
+                    results.push({ ...batch[0], aqi: data.current.us_aqi || 0 });
+                }
+            } catch (e) {
+                batch.forEach(c => results.push({ ...c, aqi: 0 }));
+            }
+            if (i + CHUNK_SIZE < CITIES.length) await new Promise(r => setTimeout(r, 100));
+        }
+        
+        cityData = results.filter(c => c.aqi > 0).sort((a, b) => b.aqi - a.aqi);
+        if (cityData.length === 0) { setTimeout(fetchData, 5000); return; }
+        
+        // Calculate Global Avg
+        const avg = Math.round(cityData.reduce((s, c) => s + c.aqi, 0) / cityData.length);
+        const avgInfo = getAQI(avg);
+        const avgEl = document.getElementById('global-avg');
+        if (avgEl) {
+            avgEl.textContent = avg;
+            avgEl.style.color = `rgb(${avgInfo.color.join(',')})`;
+        }
+        document.getElementById('status-bar').classList.add('visible');
+        
+        initParticles();
+        document.getElementById('loading').classList.add('hidden');
+    }
+
+    function initParticles() {
+        particles = [];
+        cityData.forEach(city => {
+            const info = getAQI(city.aqi);
+            
+            // Reduced particle count (from 100 + aqi to 40 + aqi*0.8)
+            const count = 40 + Math.floor(city.aqi * 0.8); 
+            
+            const { x: baseX, y: baseY } = latLonToWorld(city.lat, city.lon);
+            
+            // Reduced spread (from 200 to 80)
+            const spread = 80;
+            
+            for (let i = 0; i < count; i++) {
+                particles.push({
+                    x: baseX + (Math.random() - 0.5) * spread * 2,
+                    y: baseY + (Math.random() - 0.5) * spread * 2,
+                    baseX, baseY,
+                    // Good agitation velocity
+                    vx: (Math.random() - 0.5) * 1.0,
+                    vy: (Math.random() - 0.5) * 1.0,
+                    color: info.color,
+                    size: 1 + Math.random() * 3,
+                    alpha: 0.1 + Math.random() * 0.4,
+                    aqi: city.aqi
+                });
+            }
+        });
+    }
+
+    function render() {
+        ctx.fillStyle = '#030508';
+        ctx.fillRect(0, 0, canvas.width / window.devicePixelRatio, canvas.height / window.devicePixelRatio);
+        
+        particles.forEach(p => {
+            p.x += p.vx;
+            p.y += p.vy;
+            const dx = p.baseX - p.x;
+            const dy = p.baseY - p.y;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            
+            // Tighter tether radius (80) & stronger pull (0.005)
+            if (dist > 80) {
+                p.vx += dx * 0.005; 
+                p.vy += dy * 0.005;
+            }
+            
+            // Moderate agitation
+            p.vx += (Math.random() - 0.5) * 0.15;
+            p.vy += (Math.random() - 0.5) * 0.15;
+            p.vx *= 0.94; // Higher friction to keep contained
+            p.vy *= 0.94;
+            
+            const s = worldToScreen(p.x, p.y);
+            if (s.x < -10 || s.x > view.width + 10 || s.y < -10 || s.y > view.height + 10) return;
+            
+            ctx.beginPath();
+            const drawSize = p.size * Math.sqrt(Math.max(0.5, view.zoom));
+            ctx.arc(s.x, s.y, drawSize, 0, Math.PI * 2);
+            ctx.fillStyle = `rgba(${p.color[0]}, ${p.color[1]}, ${p.color[2]}, ${p.alpha})`;
+            ctx.fill();
+        });
+
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        const fontSize = Math.max(9, Math.min(12, 10 * view.zoom));
+        ctx.font = `${fontSize}px -apple-system, BlinkMacSystemFont, sans-serif`;
+        
+        cityData.forEach(city => {
+             const wPos = latLonToWorld(city.lat, city.lon);
+             const sPos = worldToScreen(wPos.x, wPos.y);
+             if (sPos.x < -50 || sPos.x > view.width + 50 || sPos.y < -50 || sPos.y > view.height + 50) return;
+             
+             ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
+             if (view.zoom > 0.6 || city.aqi > 150) {
+                 ctx.fillText(city.name.toLowerCase(), sPos.x, sPos.y);
+             }
+        });
+        
+        requestAnimationFrame(render);
+    }
+
+    fetchData();
+    render();
+    setInterval(fetchData, 600000);
+    </script>
+</body>
+</html>

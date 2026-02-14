@@ -1,0 +1,826 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Global Air Quality - Real-time AQI Map</title>
+    <meta name="description"
+        content="Interactive visualization of real-time air quality index (AQI) for the world's 100 largest cities. Live data from Open-Meteo Air Quality API.">
+
+    <!-- Open Graph / Social Media -->
+    <meta property="og:title" content="Global Air Quality - Real-time AQI Map">
+    <meta property="og:description"
+        content="Interactive visualization of real-time air quality for the world's 100 largest cities">
+    <meta property="og:image" content="https://dr.eamer.dev/datavis/poems/air/social-card.jpg">
+    <meta property="og:url" content="https://dr.eamer.dev/datavis/poems/air/">
+    <meta property="og:type" content="website">
+
+    <!-- Twitter Card -->
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="Global Air Quality - Real-time AQI Map">
+    <meta name="twitter:description"
+        content="Interactive visualization of real-time air quality for the world's 100 largest cities">
+    <meta name="twitter:image" content="https://dr.eamer.dev/datavis/poems/air/social-card.jpg">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #030508;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+            color: #e0e0e0;
+            min-height: 100vh;
+            overflow: hidden;
+            touch-action: none;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+
+        .btn-icon {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            width: 2rem;
+            height: 2rem;
+            border-radius: 50%;
+            background: rgba(34, 197, 94, 0.1);
+            /* Green */
+            border: 1px solid rgba(34, 197, 94, 0.3);
+            color: #22c55e;
+            font-size: 1rem;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.2s;
+            z-index: 10;
+        }
+
+        .btn-icon:hover {
+            background: rgba(34, 197, 94, 0.2);
+            transform: scale(1.05);
+        }
+
+        #canvas {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 0;
+            cursor: grab;
+        }
+
+        #canvas:active {
+            cursor: grabbing;
+        }
+
+        .header {
+            position: fixed;
+            top: 24px;
+            left: 50%;
+            transform: translateX(-50%);
+            text-align: center;
+            z-index: 100;
+            pointer-events: none;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            align-items: center;
+        }
+
+        .title {
+            font-size: 11px;
+            color: #4a5560;
+            letter-spacing: 3px;
+            text-transform: lowercase;
+        }
+
+        .status {
+            display: flex;
+            gap: 12px;
+            font-size: 10px;
+            color: #4a5560;
+            letter-spacing: 1px;
+            text-transform: lowercase;
+            align-items: center;
+            opacity: 0;
+            transition: opacity 1s ease;
+        }
+
+        .status.visible {
+            opacity: 1;
+        }
+
+        .status-item {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .live-dot {
+            width: 4px;
+            height: 4px;
+            background: #22c55e;
+            border-radius: 50%;
+            box-shadow: 0 0 8px #22c55e;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0% {
+                opacity: 0.5;
+                transform: scale(1);
+            }
+
+            50% {
+                opacity: 1;
+                transform: scale(1.5);
+            }
+
+            100% {
+                opacity: 0.5;
+                transform: scale(1);
+            }
+        }
+
+        .separator {
+            color: #2a3540;
+        }
+
+        .legend {
+            position: fixed;
+            bottom: 24px;
+            left: 24px;
+            display: flex;
+            gap: 12px;
+            z-index: 100;
+            pointer-events: none;
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 10px;
+            color: #4a5560;
+            text-transform: lowercase;
+            letter-spacing: 1px;
+        }
+
+        .legend-dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            opacity: 0.8;
+        }
+
+        .loading {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 10px;
+            color: #4a5560;
+            text-transform: lowercase;
+            letter-spacing: 2px;
+            z-index: 10;
+        }
+
+        .tooltip {
+            position: fixed;
+            background: rgba(10, 14, 18, 0.9);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            padding: 8px 12px;
+            border-radius: 4px;
+            pointer-events: none;
+            z-index: 100;
+            backdrop-filter: blur(8px);
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+            transition: opacity 0.2s;
+            opacity: 0;
+            transform: translate(-50%, -100%);
+            margin-top: -15px;
+            text-align: center;
+        }
+
+        .tooltip.visible {
+            opacity: 1;
+        }
+
+        .city-name {
+            font-size: 10px;
+            color: #888;
+            letter-spacing: 1px;
+            margin-bottom: 2px;
+            text-transform: uppercase;
+        }
+
+        .aqi-val {
+            font-size: 14px;
+            font-weight: 400;
+            color: #fff;
+        }
+
+        .hidden {
+            display: none;
+        }
+
+        @media (max-width: 600px) {
+            .legend {
+                flex-direction: column;
+                gap: 8px;
+                bottom: 16px;
+                left: 16px;
+            }
+
+            .legend-item {
+                font-size: 9px;
+                gap: 4px;
+            }
+
+            .legend-dot {
+                width: 5px;
+                height: 5px;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="header">
+        <a href="https://dr.eamer.dev" class="title" style="text-decoration: none; cursor: pointer;">global air
+            quality</a>
+        <div class="status" id="status-bar">
+            <a href="https://open-meteo.com/" target="_blank" class="status-item"
+                style="text-decoration: none; cursor: pointer;">
+                <div class="live-dot"></div>
+                <span style="color: #4a5560">live</span>
+            </a>
+            <div class="separator">/</div>
+            <div class="status-item">
+                <span>avg</span>
+                <span id="global-avg" style="color: #e0e0e0">--</span>
+            </div>
+        </div>
+    </div>
+
+    <canvas id="canvas"></canvas>
+
+    <div id="tooltip" class="tooltip">
+        <div class="city-name"></div>
+        <div class="aqi-val"></div>
+    </div>
+
+    <div class="loading" id="loading">initializing...</div>
+
+    <div class="legend" id="legend">
+        <div class="legend-item">
+            <div class="legend-dot" style="background:#22c55e"></div>good
+        </div>
+        <div class="legend-item">
+            <div class="legend-dot" style="background:#eab308"></div>moderate
+        </div>
+        <div class="legend-item">
+            <div class="legend-dot" style="background:#ef4444"></div>unhealthy
+        </div>
+        <div class="legend-item">
+            <div class="legend-dot" style="background:#7c3aed"></div>hazardous
+        </div>
+    </div>
+
+    <script>
+        // Top 100 cities by population (UN World Urbanization Prospects 2024)
+        const CITIES = [
+            { name: 'Tokyo', lat: 35.6762, lon: 139.6503 },
+            { name: 'Delhi', lat: 28.7041, lon: 77.1025 },
+            { name: 'Shanghai', lat: 31.2304, lon: 121.4737 },
+            { name: 'São Paulo', lat: -23.5505, lon: -46.6333 },
+            { name: 'Mexico City', lat: 19.4326, lon: -99.1332 },
+            { name: 'Cairo', lat: 30.0444, lon: 31.2357 },
+            { name: 'Mumbai', lat: 19.0760, lon: 72.8777 },
+            { name: 'Beijing', lat: 39.9042, lon: 116.4074 },
+            { name: 'Dhaka', lat: 23.8103, lon: 90.4125 },
+            { name: 'Osaka', lat: 34.6937, lon: 135.5023 },
+            { name: 'New York', lat: 40.7128, lon: -74.0060 },
+            { name: 'Karachi', lat: 24.8607, lon: 67.0011 },
+            { name: 'Buenos Aires', lat: -34.6037, lon: -58.3816 },
+            { name: 'Chongqing', lat: 29.4316, lon: 106.9123 },
+            { name: 'Istanbul', lat: 41.0082, lon: 28.9784 },
+            { name: 'Kolkata', lat: 22.5726, lon: 88.3639 },
+            { name: 'Manila', lat: 14.5995, lon: 120.9842 },
+            { name: 'Lagos', lat: 6.5244, lon: 3.3792 },
+            { name: 'Rio de Janeiro', lat: -22.9068, lon: -43.1729 },
+            { name: 'Tianjin', lat: 39.3434, lon: 117.3616 },
+            { name: 'Kinshasa', lat: -4.4419, lon: 15.2663 },
+            { name: 'Guangzhou', lat: 23.1291, lon: 113.2644 },
+            { name: 'Los Angeles', lat: 34.0522, lon: -118.2437 },
+            { name: 'Moscow', lat: 55.7558, lon: 37.6173 },
+            { name: 'Shenzhen', lat: 22.5431, lon: 114.0579 },
+            { name: 'Lahore', lat: 31.5204, lon: 74.3587 },
+            { name: 'Bangalore', lat: 12.9716, lon: 77.5946 },
+            { name: 'Paris', lat: 48.8566, lon: 2.3522 },
+            { name: 'Bogotá', lat: 4.7110, lon: -74.0721 },
+            { name: 'Jakarta', lat: -6.2088, lon: 106.8456 },
+            { name: 'Chennai', lat: 13.0827, lon: 80.2707 },
+            { name: 'Lima', lat: -12.0464, lon: -77.0428 },
+            { name: 'Bangkok', lat: 13.7563, lon: 100.5018 },
+            { name: 'Seoul', lat: 37.5665, lon: 126.9780 },
+            { name: 'Nagoya', lat: 35.1815, lon: 136.9066 },
+            { name: 'Hyderabad', lat: 17.3850, lon: 78.4867 },
+            { name: 'London', lat: 51.5074, lon: -0.1278 },
+            { name: 'Tehran', lat: 35.6892, lon: 51.3890 },
+            { name: 'Chicago', lat: 41.8781, lon: -87.6298 },
+            { name: 'Chengdu', lat: 30.5728, lon: 104.0668 },
+            { name: 'Nanjing', lat: 32.0603, lon: 118.7969 },
+            { name: 'Wuhan', lat: 30.5928, lon: 114.3055 },
+            { name: 'Ho Chi Minh', lat: 10.8231, lon: 106.6297 },
+            { name: 'Luanda', lat: -8.8390, lon: 13.2894 },
+            { name: 'Ahmedabad', lat: 23.0225, lon: 72.5714 },
+            { name: 'Kuala Lumpur', lat: 3.1390, lon: 101.6869 },
+            { name: 'Xi\'an', lat: 34.3416, lon: 108.9398 },
+            { name: 'Hong Kong', lat: 22.3193, lon: 114.1694 },
+            { name: 'Dongguan', lat: 23.0209, lon: 113.7518 },
+            { name: 'Hangzhou', lat: 30.2741, lon: 120.1551 },
+            { name: 'Foshan', lat: 23.0218, lon: 113.1219 },
+            { name: 'Shenyang', lat: 41.8057, lon: 123.4315 },
+            { name: 'Riyadh', lat: 24.7136, lon: 46.6753 },
+            { name: 'Baghdad', lat: 33.3152, lon: 44.3661 },
+            { name: 'Santiago', lat: -33.4489, lon: -70.6693 },
+            { name: 'Surat', lat: 21.1702, lon: 72.8311 },
+            { name: 'Madrid', lat: 40.4168, lon: -3.7038 },
+            { name: 'Suzhou', lat: 31.2989, lon: 120.5853 },
+            { name: 'Pune', lat: 18.5204, lon: 73.8567 },
+            { name: 'Harbin', lat: 45.8038, lon: 126.5340 },
+            { name: 'Houston', lat: 29.7604, lon: -95.3698 },
+            { name: 'Dallas', lat: 32.7767, lon: -96.7970 },
+            { name: 'Toronto', lat: 43.6532, lon: -79.3832 },
+            { name: 'Dar es Salaam', lat: -6.7924, lon: 39.2083 },
+            { name: 'Miami', lat: 25.7617, lon: -80.1918 },
+            { name: 'Belo Horizonte', lat: -19.9167, lon: -43.9345 },
+            { name: 'Singapore', lat: 1.3521, lon: 103.8198 },
+            { name: 'Philadelphia', lat: 39.9526, lon: -75.1652 },
+            { name: 'Atlanta', lat: 33.7490, lon: -84.3880 },
+            { name: 'Fukuoka', lat: 33.5904, lon: 130.4017 },
+            { name: 'Khartoum', lat: 15.5007, lon: 32.5599 },
+            { name: 'Barcelona', lat: 41.3851, lon: 2.1734 },
+            { name: 'Johannesburg', lat: -26.2041, lon: 28.0473 },
+            { name: 'Saint Petersburg', lat: 59.9311, lon: 30.3609 },
+            { name: 'Qingdao', lat: 36.0671, lon: 120.3826 },
+            { name: 'Dalian', lat: 38.9140, lon: 121.6147 },
+            { name: 'Washington', lat: 38.9072, lon: -77.0369 },
+            { name: 'Yangon', lat: 16.8661, lon: 96.1951 },
+            { name: 'Alexandria', lat: 31.2001, lon: 29.9187 },
+            { name: 'Jinan', lat: 36.6512, lon: 117.1201 },
+            { name: 'Guadalajara', lat: 20.6597, lon: -103.3496 },
+            { name: 'Ankara', lat: 39.9334, lon: 32.8597 },
+            { name: 'Chittagong', lat: 22.3569, lon: 91.7832 },
+            { name: 'Monterrey', lat: 25.6866, lon: -100.3161 },
+            { name: 'Zhengzhou', lat: 34.7466, lon: 113.6253 },
+            { name: 'Melbourne', lat: -37.8136, lon: 144.9631 },
+            { name: 'Abidjan', lat: 5.3600, lon: -4.0083 },
+            { name: 'Kano', lat: 12.0022, lon: 8.5919 },
+            { name: 'Phoenix', lat: 33.4484, lon: -112.0740 },
+            { name: 'Nairobi', lat: -1.2921, lon: 36.8219 },
+            { name: 'Shantou', lat: 23.3540, lon: 116.6819 },
+            { name: 'Changsha', lat: 28.2282, lon: 112.9388 },
+            { name: 'Addis Ababa', lat: 9.0320, lon: 38.7469 },
+            { name: 'Kabul', lat: 34.5553, lon: 69.2075 },
+            { name: 'Hanoi', lat: 21.0285, lon: 105.8542 },
+            { name: 'Cape Town', lat: -33.9249, lon: 18.4241 },
+            { name: 'Sydney', lat: -33.8688, lon: 151.2093 },
+            { name: 'Casablanca', lat: 33.5731, lon: -7.5898 }
+        ];
+
+        let cityData = [];
+        let particles = [];
+        let focusedCity = null;
+        let zoomAnimation = null;
+
+        // Viewport State
+        let view = {
+            x: 0,
+            y: 0,
+            zoom: 0.8,
+            minZoom: 0.4,  // Prevent zooming out too far (was 0.2)
+            maxZoom: 4,    // Prevent excessive zoom in (was 6)
+            width: 0,
+            height: 0,
+            isDragging: false,
+            lastX: 0,
+            lastY: 0
+        };
+
+        const WORLD_W = 2000;
+        const WORLD_H = 1000;
+
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const tooltip = document.getElementById('tooltip');
+
+        function latLonToWorld(lat, lon) {
+            const x = ((lon + 180) / 360) * WORLD_W;
+            const y = ((90 - lat) / 180) * WORLD_H;
+            return { x, y };
+        }
+
+        function worldToScreen(wx, wy) {
+            const screenCX = view.width / 2;
+            const screenCY = view.height / 2;
+            const sx = screenCX + (wx - WORLD_W / 2) * view.zoom + view.x;
+            const sy = screenCY + (wy - WORLD_H / 2) * view.zoom + view.y;
+            return { x: sx, y: sy };
+        }
+
+        function applyBounds() {
+            // Calculate the scaled world dimensions
+            const scaledWorldW = WORLD_W * view.zoom;
+            const scaledWorldH = WORLD_H * view.zoom;
+
+            // Minimal padding beyond the world edges (5% of scaled world)
+            const padding = 0.05;
+            const maxOffsetX = scaledWorldW * (0.5 + padding);
+            const maxOffsetY = scaledWorldH * (0.5 + padding);
+
+            // Clamp pan to keep most of the world visible
+            view.x = Math.max(-maxOffsetX, Math.min(maxOffsetX, view.x));
+            view.y = Math.max(-maxOffsetY, Math.min(maxOffsetY, view.y));
+        }
+
+        function resize() {
+            const dpr = window.devicePixelRatio || 1;
+            canvas.width = window.innerWidth * dpr;
+            canvas.height = window.innerHeight * dpr;
+            ctx.scale(dpr, dpr);
+            canvas.style.width = window.innerWidth + 'px';
+            canvas.style.height = window.innerHeight + 'px';
+            view.width = window.innerWidth;
+            view.height = window.innerHeight;
+        }
+
+        resize();
+        window.addEventListener('resize', () => setTimeout(resize, 100));
+
+        function handleZoom(delta, centerX, centerY) {
+            // factor: >1 zooms in, <1 zooms out
+            const factor = delta > 0 ? 0.9 : 1.1;
+            const newZoom = Math.min(view.maxZoom, Math.max(view.minZoom, view.zoom * factor));
+            if (newZoom !== view.zoom) {
+                const wx = ((centerX - view.width / 2 - view.x) / view.zoom);
+                const wy = ((centerY - view.height / 2 - view.y) / view.zoom);
+                view.zoom = newZoom;
+                view.x = centerX - view.width / 2 - (wx * view.zoom);
+                view.y = centerY - view.height / 2 - (wy * view.zoom);
+                applyBounds(); // Enforce zoom bounds
+            }
+        }
+
+        canvas.addEventListener('mousedown', e => { view.isDragging = true; view.lastX = e.clientX; view.lastY = e.clientY; });
+        window.addEventListener('mousemove', e => {
+            if (view.isDragging) {
+                view.x += e.clientX - view.lastX;
+                view.y += e.clientY - view.lastY;
+                view.lastX = e.clientX;
+                view.lastY = e.clientY;
+                applyBounds(); // Enforce pan bounds
+                checkInteraction(e.clientX, e.clientY);
+            } else {
+                checkInteraction(e.clientX, e.clientY);
+            }
+        });
+        window.addEventListener('mouseup', () => view.isDragging = false);
+
+        // Touch Handling - Consolidated for pan, pinch zoom, and tap-to-zoom
+        let lastTouchDist = 0;
+        let touchStartTime = 0;
+        let touchStartPos = { x: 0, y: 0 };
+        let lastTouchEndTime = 0; // Track last touch to prevent synthetic click events
+
+        // Click to zoom into city (desktop only - ignore synthetic clicks from touch)
+        canvas.addEventListener('click', e => {
+            if (view.isDragging) return; // Don't trigger on drag release
+
+            // Ignore synthetic click events that happen shortly after touch
+            const timeSinceTouch = Date.now() - lastTouchEndTime;
+            if (timeSinceTouch < 500) return;
+
+            handleCityClick(e.clientX, e.clientY);
+        });
+
+        // Normalized Mouse Wheel
+        canvas.addEventListener('wheel', e => {
+            e.preventDefault();
+            const delta = Math.sign(e.deltaY) * 100;
+            handleZoom(delta, e.clientX, e.clientY);
+        }, { passive: false });
+
+        canvas.addEventListener('touchstart', e => {
+            if (e.touches.length === 1) {
+                view.isDragging = true;
+                view.lastX = e.touches[0].clientX;
+                view.lastY = e.touches[0].clientY;
+                touchStartTime = Date.now();
+                touchStartPos = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+                checkInteraction(e.touches[0].clientX, e.touches[0].clientY);
+            } else if (e.touches.length === 2) {
+                view.isDragging = false;
+                const t1 = e.touches[0], t2 = e.touches[1];
+                lastTouchDist = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
+            }
+        }, { passive: false });
+
+        canvas.addEventListener('touchmove', e => {
+            e.preventDefault();
+            if (e.touches.length === 1 && view.isDragging) {
+                view.x += e.touches[0].clientX - view.lastX;
+                view.y += e.touches[0].clientY - view.lastY;
+                view.lastX = e.touches[0].clientX;
+                view.lastY = e.touches[0].clientY;
+                applyBounds(); // Enforce pan bounds
+            } else if (e.touches.length === 2) {
+                const t1 = e.touches[0], t2 = e.touches[1];
+                const dist = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
+                const cx = (t1.clientX + t2.clientX) / 2;
+                const cy = (t1.clientY + t2.clientY) / 2;
+
+                // Direct scale ratio zoom
+                const newScale = dist / lastTouchDist;
+                const targetZoom = view.zoom * newScale;
+                const clampedZoom = Math.min(view.maxZoom, Math.max(view.minZoom, targetZoom));
+
+                if (clampedZoom !== view.zoom) {
+                    const wx = ((cx - view.width / 2 - view.x) / view.zoom);
+                    const wy = ((cy - view.height / 2 - view.y) / view.zoom);
+                    view.zoom = clampedZoom;
+                    view.x = cx - view.width / 2 - (wx * view.zoom);
+                    view.y = cy - view.height / 2 - (wy * view.zoom);
+                    applyBounds(); // Enforce zoom bounds
+                }
+                lastTouchDist = dist;
+            }
+        }, { passive: false });
+
+        canvas.addEventListener('touchend', e => {
+            // Reset dragging state
+            view.isDragging = false;
+
+            // Check for tap gesture (quick touch with minimal movement)
+            if (e.changedTouches.length === 1) {
+                const touchDuration = Date.now() - touchStartTime;
+                const touchEndPos = { x: e.changedTouches[0].clientX, y: e.changedTouches[0].clientY };
+                const touchDist = Math.hypot(touchEndPos.x - touchStartPos.x, touchEndPos.y - touchStartPos.y);
+
+                // If quick tap with minimal movement, treat as city zoom click
+                if (touchDuration < 300 && touchDist < 10) {
+                    lastTouchEndTime = Date.now(); // Mark touch time to prevent synthetic click
+                    handleCityClick(touchEndPos.x, touchEndPos.y);
+                }
+            }
+        });
+
+        function handleCityClick(x, y) {
+            if (focusedCity) {
+                // Zoom out to default view
+                animateToView(0, 0, 0.8, 800);
+                focusedCity = null;
+            } else {
+                // Find city at click position
+                let nearest = null;
+                let minDist = 30;
+
+                cityData.forEach(city => {
+                    const wPos = latLonToWorld(city.lat, city.lon);
+                    const sPos = worldToScreen(wPos.x, wPos.y);
+                    const d = Math.hypot(x - sPos.x, y - sPos.y);
+                    if (d < minDist) {
+                        minDist = d;
+                        nearest = city;
+                    }
+                });
+
+                if (nearest) {
+                    focusedCity = nearest;
+                    const wPos = latLonToWorld(nearest.lat, nearest.lon);
+                    const targetZoom = 3;
+                    // Calculate view offset to center the city at the target zoom level
+                    // worldToScreen formula: sx = screenCX + (wx - WORLD_W/2) * zoom + view.x
+                    // To center: screenCX = screenCX + (wx - WORLD_W/2) * zoom + view.x
+                    // Therefore: view.x = -(wx - WORLD_W/2) * zoom
+                    const targetX = -(wPos.x - WORLD_W / 2) * targetZoom;
+                    const targetY = -(wPos.y - WORLD_H / 2) * targetZoom;
+                    animateToView(targetX, targetY, targetZoom, 800);
+                }
+            }
+        }
+
+        function animateToView(targetX, targetY, targetZoom, duration) {
+            const startX = view.x;
+            const startY = view.y;
+            const startZoom = view.zoom;
+            const startTime = Date.now();
+
+            if (zoomAnimation) cancelAnimationFrame(zoomAnimation);
+
+            function animate() {
+                const elapsed = Date.now() - startTime;
+                const progress = Math.min(elapsed / duration, 1);
+
+                // Ease out cubic for smooth deceleration
+                const eased = 1 - Math.pow(1 - progress, 3);
+
+                view.x = startX + (targetX - startX) * eased;
+                view.y = startY + (targetY - startY) * eased;
+                view.zoom = startZoom + (targetZoom - startZoom) * eased;
+
+                if (progress < 1) {
+                    zoomAnimation = requestAnimationFrame(animate);
+                } else {
+                    zoomAnimation = null;
+                }
+            }
+
+            animate();
+        }
+
+        function checkInteraction(x, y) {
+            let nearest = null;
+            let minDist = 30;
+
+            cityData.forEach(city => {
+                const wPos = latLonToWorld(city.lat, city.lon);
+                const sPos = worldToScreen(wPos.x, wPos.y);
+                const d = Math.hypot(x - sPos.x, y - sPos.y);
+                if (d < minDist) {
+                    minDist = d;
+                    nearest = city;
+                }
+            });
+
+            if (nearest) {
+                tooltip.querySelector('.city-name').textContent = nearest.name;
+                tooltip.querySelector('.aqi-val').textContent = `${Math.round(nearest.aqi)} AQI`;
+                const aqiInfo = getAQI(nearest.aqi);
+                tooltip.querySelector('.aqi-val').style.color = `rgb(${aqiInfo.color.join(',')})`;
+                tooltip.style.left = x + 'px';
+                tooltip.style.top = (y - 20) + 'px';
+                tooltip.classList.add('visible');
+                canvas.style.cursor = 'pointer';
+            } else {
+                tooltip.classList.remove('visible');
+                canvas.style.cursor = view.isDragging ? 'grabbing' : 'grab';
+            }
+        }
+
+        function getAQI(aqi) {
+            if (aqi <= 50) return { color: [34, 197, 94], class: 'aqi-good', status: 'Good' };
+            if (aqi <= 100) return { color: [234, 179, 8], class: 'aqi-moderate', status: 'Moderate' };
+            if (aqi <= 150) return { color: [249, 115, 22], class: 'aqi-sensitive', status: 'Sensitive' };
+            if (aqi <= 200) return { color: [239, 68, 68], class: 'aqi-unhealthy', status: 'Unhealthy' };
+            if (aqi <= 300) return { color: [220, 38, 38], class: 'aqi-very-unhealthy', status: 'Very Unhealthy' };
+            return { color: [124, 58, 237], class: 'aqi-hazardous', status: 'Hazardous' };
+        }
+
+        async function fetchData() {
+            const CHUNK_SIZE = 50;
+            const results = [];
+            for (let i = 0; i < CITIES.length; i += CHUNK_SIZE) {
+                const batch = CITIES.slice(i, i + CHUNK_SIZE);
+                const lats = batch.map(c => c.lat).join(',');
+                const lons = batch.map(c => c.lon).join(',');
+                try {
+                    const url = `https://air-quality-api.open-meteo.com/v1/air-quality?latitude=${lats}&longitude=${lons}&current=us_aqi`;
+                    const res = await fetch(url);
+                    const data = await res.json();
+                    if (Array.isArray(data)) {
+                        data.forEach((d, idx) => results.push({ ...batch[idx], aqi: d.current?.us_aqi || 0 }));
+                    } else if (data.current) {
+                        results.push({ ...batch[0], aqi: data.current.us_aqi || 0 });
+                    }
+                } catch (e) {
+                    batch.forEach(c => results.push({ ...c, aqi: 0 }));
+                }
+                if (i + CHUNK_SIZE < CITIES.length) await new Promise(r => setTimeout(r, 100));
+            }
+
+            cityData = results.filter(c => c.aqi > 0).sort((a, b) => b.aqi - a.aqi);
+            if (cityData.length === 0) { setTimeout(fetchData, 5000); return; }
+
+            // Calculate Global Avg
+            const avg = Math.round(cityData.reduce((s, c) => s + c.aqi, 0) / cityData.length);
+            const avgInfo = getAQI(avg);
+            const avgEl = document.getElementById('global-avg');
+            if (avgEl) {
+                avgEl.textContent = avg;
+                avgEl.style.color = `rgb(${avgInfo.color.join(',')})`;
+            }
+            document.getElementById('status-bar').classList.add('visible');
+
+            initParticles();
+            document.getElementById('loading').classList.add('hidden');
+        }
+
+        function initParticles() {
+            particles = [];
+            cityData.forEach(city => {
+                const info = getAQI(city.aqi);
+
+                // Reduced particle count (from 100 + aqi to 40 + aqi*0.8)
+                const count = 40 + Math.floor(city.aqi * 0.8);
+
+                const { x: baseX, y: baseY } = latLonToWorld(city.lat, city.lon);
+
+                // Reduced spread (from 200 to 80)
+                const spread = 80;
+
+                for (let i = 0; i < count; i++) {
+                    particles.push({
+                        x: baseX + (Math.random() - 0.5) * spread * 2,
+                        y: baseY + (Math.random() - 0.5) * spread * 2,
+                        baseX, baseY,
+                        // Good agitation velocity
+                        vx: (Math.random() - 0.5) * 1.0,
+                        vy: (Math.random() - 0.5) * 1.0,
+                        color: info.color,
+                        size: 1 + Math.random() * 3,
+                        alpha: 0.1 + Math.random() * 0.4,
+                        aqi: city.aqi
+                    });
+                }
+            });
+        }
+
+        function render() {
+            ctx.fillStyle = '#030508';
+            ctx.fillRect(0, 0, canvas.width / window.devicePixelRatio, canvas.height / window.devicePixelRatio);
+
+            particles.forEach(p => {
+                p.x += p.vx;
+                p.y += p.vy;
+                const dx = p.baseX - p.x;
+                const dy = p.baseY - p.y;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+
+                // Tighter tether radius (80) & stronger pull (0.005)
+                if (dist > 80) {
+                    p.vx += dx * 0.005;
+                    p.vy += dy * 0.005;
+                }
+
+                // Moderate agitation
+                p.vx += (Math.random() - 0.5) * 0.15;
+                p.vy += (Math.random() - 0.5) * 0.15;
+                p.vx *= 0.94; // Higher friction to keep contained
+                p.vy *= 0.94;
+
+                const s = worldToScreen(p.x, p.y);
+                if (s.x < -10 || s.x > view.width + 10 || s.y < -10 || s.y > view.height + 10) return;
+
+                ctx.beginPath();
+                const drawSize = p.size * Math.sqrt(Math.max(0.5, view.zoom));
+                ctx.arc(s.x, s.y, drawSize, 0, Math.PI * 2);
+                ctx.fillStyle = `rgba(${p.color[0]}, ${p.color[1]}, ${p.color[2]}, ${p.alpha})`;
+                ctx.fill();
+            });
+
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            const fontSize = Math.max(9, Math.min(12, 10 * view.zoom));
+            ctx.font = `${fontSize}px -apple-system, BlinkMacSystemFont, sans-serif`;
+
+            cityData.forEach(city => {
+                const wPos = latLonToWorld(city.lat, city.lon);
+                const sPos = worldToScreen(wPos.x, wPos.y);
+                if (sPos.x < -50 || sPos.x > view.width + 50 || sPos.y < -50 || sPos.y > view.height + 50) return;
+
+                // Highlight focused city with pulsing ring
+                if (city === focusedCity) {
+                    const pulse = 0.5 + 0.5 * Math.sin(Date.now() / 200);
+                    const ringSize = 30 + pulse * 10;
+                    ctx.strokeStyle = `rgba(255, 255, 255, ${0.6 * pulse})`;
+                    ctx.lineWidth = 2;
+                    ctx.beginPath();
+                    ctx.arc(sPos.x, sPos.y, ringSize, 0, Math.PI * 2);
+                    ctx.stroke();
+                }
+
+                ctx.fillStyle = city === focusedCity ? 'rgba(255, 255, 255, 1)' : 'rgba(255, 255, 255, 0.4)';
+                if (view.zoom > 0.6 || city.aqi > 150 || city === focusedCity) {
+                    ctx.fillText(city.name.toLowerCase(), sPos.x, sPos.y);
+                }
+            });
+
+            requestAnimationFrame(render);
+        }
+
+        fetchData();
+        render();
+        setInterval(fetchData, 600000);
+    </script>
+</body>
+
+</html>

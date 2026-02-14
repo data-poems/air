@@ -1,0 +1,774 @@
+Projects
+Max
+Here's the updated minimalist air quality visualization with 50 major world cities. The design is stripped down to
+essentials: pure black background, subtle particle clusters for each city, a single average AQI number in the corner,
+and a horizontal scrolling city list at the bottom. Typography is minimal with muted labels. The particle system is
+lighter with smaller, more transparent dots. Data refreshes every 10 minutes from Open-Meteo.
+Suggested next steps:
+
+Add click-to-focus - Click a city card to center the view on that city's particle cluster
+Add keyboard navigation - Arrow keys to scroll through cities, Enter to focus
+Add subtle time indicator - Show last update time as a tiny timestamp in the corner
+
+air-quality-minimal.html
+Code · 9.10 KB
+change the color shceme and add the time indicator as suggested; then, in interactive penrose : ; then also:
+pasted_content_3.txt
+Text · 6.78 KB
+pasted_content_4.txt
+Text · 6.78 KB
+Max
+I'll update the air quality visualization with a new color scheme and time indicator, then check what you'd like done
+with the interactive Penrose. Let me also read the attached files to understand the full request.
+
+Updated the air quality visualization with a simpler design and 50 cities. Next, I'll enhance interactivity and consider
+UX improvements.
+
+Updated the visualization with a new color scheme and time indicator; next, will enhance interactivity and review UX
+improvements.
+
+To fix the Stats.js error, I updated the CDN link from r17 to the stable r16 version in the demo, ensuring it loads
+correctly. Next, I'll focus on updating the air quality visualization with new colors and the time indicator.
+Visualization Potential Gallery
+Not published
+21 minutes ago
+Max
+Updated the air quality visualization with a new color scheme (cyan → teal → amber → orange → rose → violet) and added a
+time indicator showing when data was last updated. Also fixed the Stats.js error in the WebGL Penrose triangle demo by
+switching to a compatible CDN version (r16 instead of r17 which had ES module export issues).
+Suggested next steps:
+
+Add city hover highlight - When hovering over a city card, pulse or highlight that city's particle cluster on the canvas
+Add sorting options - Let users sort cities by name, AQI value, or geographic region
+Add data source toggle - Switch between US AQI and European AQI scales for international users
+
+Visualization Potential Gallery
+Not published
+20 minutes ago
+air-quality-minimal.html
+Code · 9.97 KB
+1) add the hover piece, as well as a label that appears; 2) increase density and brightness of particles, it's too dark
+right now, should be like bioluminescence in a void
+Max
+I'll add the hover interaction with labels and boost the particle density and brightness for that bioluminescent effect.
+Let me update the visualization.
+
+Completed updates to the air quality visualization: added hover labels, increased particle brightness, and improved
+bioluminescent effects. Next, I may enhance interactivity or data options.
+Max
+Updated the air quality visualization with:
+
+Hover interaction - Hovering over a city card highlights that city's particle cluster (1.5x brighter and larger) and
+shows a floating label with the city name and AQI value positioned near the particles
+Bioluminescent effect - Significantly increased particle density (60+ base particles per city), boosted alpha values
+(0.4-0.9 range), added radial gradient glow around each particle core, and implemented subtle pulsing animation for that
+living, breathing bioluminescence feel
+
+The colors are now much brighter (pure cyan #00ffcc, bright yellow #ffcc00, etc.) against the pure black background for
+maximum contrast.
+Suggested next steps:
+
+Add particle trails - Leave fading trails behind particles as they move for a more ethereal effect
+Add click-to-zoom - Click a city to smoothly zoom the canvas view to that cluster
+Add ambient sound - Subtle generative audio that responds to overall AQI levels
+
+air-quality-minimal.html
+Code · 13.48 KB
+add 2) particle trails and 3) click to zoom
+Max
+I'll add particle trails and click-to-zoom functionality. Let me update the visualization.
+
+I added particle trails and click-to-zoom features to enhance interactivity and visual ethereality for the air quality
+visualization. Next, I will deliver the updated file.
+Max
+Updated the air quality visualization with:
+Particle Trails - Each particle now leaves a fading trail of 8 positions behind it as it moves, creating an ethereal,
+flowing effect. Trail segments fade in both opacity and size as they age.
+Click-to-Zoom - Click any city card to smoothly zoom in (3x) and center on that city's particle cluster. When zoomed:
+
+A large centered label shows the city name, AQI value, and status
+Other cities fade to 20% brightness to focus attention
+A "← Back to Global" button appears (or press ESC)
+The city list hides for an immersive view
+
+The camera movement uses eased interpolation for smooth transitions.
+Suggested next steps:
+
+Add zoom via scroll wheel - Allow mouse wheel to zoom in/out on any area of the canvas
+Add city connections - Draw faint lines between nearby cities to show regional patterns
+Add time-lapse mode - Animate through historical data to show AQI changes over 24 hours
+
+air-quality-minimal.html
+Code · 19.54 KB
+Task completed
+How was this result?
+Suggested follow-ups
+My BrowserGoogle CalendarGoogle Drive+6
+air-quality-minimal.html
+
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Air Quality</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #000;
+            font-family: -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+            color: #fff;
+            min-height: 100vh;
+            overflow: hidden;
+        }
+
+        canvas {
+            position: fixed;
+            inset: 0;
+        }
+
+        .ui {
+            position: relative;
+            z-index: 1;
+            pointer-events: none;
+        }
+
+        .top {
+            position: fixed;
+            top: 1.5rem;
+            left: 1.5rem;
+            right: 1.5rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+        }
+
+        h1 {
+            font-size: 0.7rem;
+            font-weight: 400;
+            letter-spacing: 0.15em;
+            text-transform: uppercase;
+            color: #333;
+        }
+
+        .time {
+            font-size: 0.55rem;
+            color: #222;
+            margin-top: 0.5rem;
+            letter-spacing: 0.05em;
+        }
+
+        .zoom-hint {
+            font-size: 0.5rem;
+            color: #333;
+            margin-top: 0.25rem;
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+
+        .zoom-hint.show {
+            opacity: 1;
+        }
+
+        .avg {
+            text-align: right;
+        }
+
+        .avg-value {
+            font-size: 2.5rem;
+            font-weight: 200;
+            line-height: 1;
+            letter-spacing: -0.03em;
+        }
+
+        .avg-label {
+            font-size: 0.55rem;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            color: #333;
+            margin-top: 0.25rem;
+        }
+
+        .cities {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            padding: 1rem 1.5rem 1.5rem;
+            pointer-events: auto;
+            background: linear-gradient(transparent, rgba(0, 0, 0, 0.95) 40%);
+            transition: opacity 0.3s;
+        }
+
+        .cities.hidden {
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        .scroll {
+            display: flex;
+            gap: 1px;
+            overflow-x: auto;
+            scrollbar-width: none;
+        }
+
+        .scroll::-webkit-scrollbar {
+            display: none;
+        }
+
+        .city {
+            flex-shrink: 0;
+            padding: 0.75rem 1rem;
+            background: rgba(255, 255, 255, 0.02);
+            min-width: 100px;
+            transition: background 0.2s;
+            cursor: pointer;
+        }
+
+        .city:hover,
+        .city.active {
+            background: rgba(255, 255, 255, 0.06);
+        }
+
+        .city-name {
+            font-size: 0.6rem;
+            color: #444;
+            margin-bottom: 0.35rem;
+            white-space: nowrap;
+        }
+
+        .city-aqi {
+            font-size: 1.25rem;
+            font-weight: 300;
+        }
+
+        .loading {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 0.6rem;
+            color: #222;
+            text-transform: uppercase;
+            letter-spacing: 0.2em;
+        }
+
+        .hide {
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        /* Bioluminescent color scheme */
+        .g {
+            color: #00ffcc;
+        }
+
+        .m {
+            color: #00e5a0;
+        }
+
+        .s {
+            color: #ffcc00;
+        }
+
+        .u {
+            color: #ff8800;
+        }
+
+        .v {
+            color: #ff4466;
+        }
+
+        .h {
+            color: #cc66ff;
+        }
+
+        /* Floating label */
+        .label {
+            position: fixed;
+            pointer-events: none;
+            background: rgba(0, 0, 0, 0.85);
+            padding: 0.5rem 0.75rem;
+            border-radius: 4px;
+            font-size: 0.7rem;
+            opacity: 0;
+            transition: opacity 0.15s;
+            z-index: 100;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .label.show {
+            opacity: 1;
+        }
+
+        .label-name {
+            color: #888;
+            margin-bottom: 0.25rem;
+        }
+
+        .label-aqi {
+            font-size: 1.1rem;
+            font-weight: 300;
+        }
+
+        /* Zoom label */
+        .zoom-label {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.5s;
+            z-index: 50;
+        }
+
+        .zoom-label.show {
+            opacity: 1;
+        }
+
+        .zoom-label-name {
+            font-size: 1.5rem;
+            font-weight: 200;
+            letter-spacing: 0.1em;
+            margin-bottom: 0.5rem;
+        }
+
+        .zoom-label-aqi {
+            font-size: 4rem;
+            font-weight: 100;
+            letter-spacing: -0.02em;
+        }
+
+        .zoom-label-status {
+            font-size: 0.6rem;
+            text-transform: uppercase;
+            letter-spacing: 0.2em;
+            color: #444;
+            margin-top: 0.5rem;
+        }
+
+        .back-btn {
+            position: fixed;
+            top: 1.5rem;
+            right: 1.5rem;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            color: #666;
+            padding: 0.5rem 1rem;
+            font-size: 0.6rem;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            cursor: pointer;
+            opacity: 0;
+            pointer-events: none;
+            transition: all 0.3s;
+            z-index: 100;
+        }
+
+        .back-btn.show {
+            opacity: 1;
+            pointer-events: auto;
+        }
+
+        .back-btn:hover {
+            background: rgba(255, 255, 255, 0.1);
+            color: #999;
+        }
+    </style>
+</head>
+
+<body>
+    <canvas id="c"></canvas>
+
+    <div class="label" id="label">
+        <div class="label-name" id="label-name">City</div>
+        <div class="label-aqi" id="label-aqi">--</div>
+    </div>
+
+    <div class="zoom-label" id="zoom-label">
+        <div class="zoom-label-name" id="zoom-label-name">City</div>
+        <div class="zoom-label-aqi" id="zoom-label-aqi">--</div>
+        <div class="zoom-label-status" id="zoom-label-status">Air Quality</div>
+    </div>
+
+    <button class="back-btn" id="back-btn">← Back to Global</button>
+
+    <div class="loading" id="load">Loading</div>
+
+    <div class="ui hide" id="ui">
+        <div class="top">
+            <div>
+                <h1>Global Air Quality</h1>
+                <div class="time" id="time">Updated --</div>
+                <div class="zoom-hint" id="zoom-hint">Click a city to zoom</div>
+            </div>
+            <div class="avg" id="avg-container">
+                <div class="avg-value" id="avg">--</div>
+                <div class="avg-label">Avg AQI</div>
+            </div>
+        </div>
+
+        <div class="cities" id="cities">
+            <div class="scroll" id="list"></div>
+        </div>
+    </div>
+
+    <script>
+        const C = [
+            { n: 'Tokyo', lat: 35.6762, lon: 139.6503 },
+            { n: 'Delhi', lat: 28.7041, lon: 77.1025 },
+            { n: 'Shanghai', lat: 31.2304, lon: 121.4737 },
+            { n: 'São Paulo', lat: -23.5505, lon: -46.6333 },
+            { n: 'Mexico City', lat: 19.4326, lon: -99.1332 },
+            { n: 'Cairo', lat: 30.0444, lon: 31.2357 },
+            { n: 'Mumbai', lat: 19.0760, lon: 72.8777 },
+            { n: 'Beijing', lat: 39.9042, lon: 116.4074 },
+            { n: 'Dhaka', lat: 23.8103, lon: 90.4125 },
+            { n: 'Osaka', lat: 34.6937, lon: 135.5023 },
+            { n: 'New York', lat: 40.7128, lon: -74.0060 },
+            { n: 'Karachi', lat: 24.8607, lon: 67.0011 },
+            { n: 'Buenos Aires', lat: -34.6037, lon: -58.3816 },
+            { n: 'Chongqing', lat: 29.4316, lon: 106.9123 },
+            { n: 'Istanbul', lat: 41.0082, lon: 28.9784 },
+            { n: 'Kolkata', lat: 22.5726, lon: 88.3639 },
+            { n: 'Manila', lat: 14.5995, lon: 120.9842 },
+            { n: 'Lagos', lat: 6.5244, lon: 3.3792 },
+            { n: 'Rio de Janeiro', lat: -22.9068, lon: -43.1729 },
+            { n: 'Tianjin', lat: 39.3434, lon: 117.3616 },
+            { n: 'Kinshasa', lat: -4.4419, lon: 15.2663 },
+            { n: 'Guangzhou', lat: 23.1291, lon: 113.2644 },
+            { n: 'Los Angeles', lat: 34.0522, lon: -118.2437 },
+            { n: 'Moscow', lat: 55.7558, lon: 37.6173 },
+            { n: 'Shenzhen', lat: 22.5431, lon: 114.0579 },
+            { n: 'Lahore', lat: 31.5204, lon: 74.3587 },
+            { n: 'Bangalore', lat: 12.9716, lon: 77.5946 },
+            { n: 'Paris', lat: 48.8566, lon: 2.3522 },
+            { n: 'Bogotá', lat: 4.7110, lon: -74.0721 },
+            { n: 'Jakarta', lat: -6.2088, lon: 106.8456 },
+            { n: 'Chennai', lat: 13.0827, lon: 80.2707 },
+            { n: 'Lima', lat: -12.0464, lon: -77.0428 },
+            { n: 'Bangkok', lat: 13.7563, lon: 100.5018 },
+            { n: 'Seoul', lat: 37.5665, lon: 126.9780 },
+            { n: 'Nagoya', lat: 35.1815, lon: 136.9066 },
+            { n: 'Hyderabad', lat: 17.3850, lon: 78.4867 },
+            { n: 'London', lat: 51.5074, lon: -0.1278 },
+            { n: 'Tehran', lat: 35.6892, lon: 51.3890 },
+            { n: 'Chicago', lat: 41.8781, lon: -87.6298 },
+            { n: 'Chengdu', lat: 30.5728, lon: 104.0668 },
+            { n: 'Nanjing', lat: 32.0603, lon: 118.7969 },
+            { n: 'Wuhan', lat: 30.5928, lon: 114.3055 },
+            { n: 'Ho Chi Minh', lat: 10.8231, lon: 106.6297 },
+            { n: 'Luanda', lat: -8.8390, lon: 13.2894 },
+            { n: 'Ahmedabad', lat: 23.0225, lon: 72.5714 },
+            { n: 'Kuala Lumpur', lat: 3.1390, lon: 101.6869 },
+            { n: 'Hong Kong', lat: 22.3193, lon: 114.1694 },
+            { n: 'Hangzhou', lat: 30.2741, lon: 120.1551 },
+            { n: 'Singapore', lat: 1.3521, lon: 103.8198 },
+            { n: 'Sydney', lat: -33.8688, lon: 151.2093 }
+        ];
+
+        let data = [], particles = [];
+        let hoveredCity = null;
+        let zoomedCity = null;
+        let camera = { x: 0, y: 0, zoom: 1, targetX: 0, targetY: 0, targetZoom: 1 };
+
+        const canvas = document.getElementById('c');
+        const ctx = canvas.getContext('2d');
+        const label = document.getElementById('label');
+        const labelName = document.getElementById('label-name');
+        const labelAqi = document.getElementById('label-aqi');
+        const zoomLabel = document.getElementById('zoom-label');
+        const zoomLabelName = document.getElementById('zoom-label-name');
+        const zoomLabelAqi = document.getElementById('zoom-label-aqi');
+        const zoomLabelStatus = document.getElementById('zoom-label-status');
+        const backBtn = document.getElementById('back-btn');
+        const citiesEl = document.getElementById('cities');
+        const avgContainer = document.getElementById('avg-container');
+        const zoomHint = document.getElementById('zoom-hint');
+
+        const resize = () => {
+            canvas.width = innerWidth;
+            canvas.height = innerHeight;
+        };
+        resize();
+        addEventListener('resize', resize);
+
+        // Bioluminescent colors
+        const aqi = v => {
+            if (v <= 50) return { c: [0, 255, 204], k: 'g', s: 'Good' };
+            if (v <= 100) return { c: [0, 229, 160], k: 'm', s: 'Moderate' };
+            if (v <= 150) return { c: [255, 204, 0], k: 's', s: 'Sensitive' };
+            if (v <= 200) return { c: [255, 136, 0], k: 'u', s: 'Unhealthy' };
+            if (v <= 300) return { c: [255, 68, 102], k: 'v', s: 'Very Unhealthy' };
+            return { c: [204, 102, 255], k: 'h', s: 'Hazardous' };
+        };
+
+        const updateTime = () => {
+            const now = new Date();
+            const h = now.getHours().toString().padStart(2, '0');
+            const m = now.getMinutes().toString().padStart(2, '0');
+            document.getElementById('time').textContent = `Updated ${h}:${m}`;
+        };
+
+        const fetch50 = async () => {
+            const r = [];
+            for (let i = 0; i < C.length; i += 5) {
+                const batch = C.slice(i, i + 5);
+                const p = batch.map(async c => {
+                    try {
+                        const res = await fetch(`https://air-quality-api.open-meteo.com/v1/air-quality?latitude=${c.lat}&longitude=${c.lon}&current=us_aqi`);
+                        const d = await res.json();
+                        return { ...c, aqi: d.current?.us_aqi || 0 };
+                    } catch { return { ...c, aqi: 0 }; }
+                });
+                r.push(...await Promise.all(p));
+                if (i + 5 < C.length) await new Promise(x => setTimeout(x, 100));
+            }
+            data = r.filter(x => x.aqi > 0).sort((a, b) => b.aqi - a.aqi);
+            if (!data.length) { setTimeout(fetch50, 3000); return; }
+            render();
+            initP();
+            updateTime();
+            document.getElementById('load').classList.add('hide');
+            document.getElementById('ui').classList.remove('hide');
+            setTimeout(() => zoomHint.classList.add('show'), 1000);
+        };
+
+        const render = () => {
+            const avg = Math.round(data.reduce((s, c) => s + c.aqi, 0) / data.length);
+            const i = aqi(avg);
+            const el = document.getElementById('avg');
+            el.textContent = avg;
+            el.className = `avg-value ${i.k}`;
+
+            document.getElementById('list').innerHTML = data.map((c, idx) => {
+                const i = aqi(c.aqi);
+                return `<div class="city" data-idx="${idx}"><div class="city-name">${c.n}</div><div class="city-aqi ${i.k}">${c.aqi}</div></div>`;
+            }).join('');
+
+            // Add hover and click listeners
+            document.querySelectorAll('.city').forEach(el => {
+                el.addEventListener('mouseenter', () => {
+                    if (zoomedCity !== null) return;
+                    const idx = parseInt(el.dataset.idx);
+                    hoveredCity = idx;
+                    el.classList.add('active');
+                });
+                el.addEventListener('mouseleave', () => {
+                    hoveredCity = null;
+                    el.classList.remove('active');
+                    label.classList.remove('show');
+                });
+                el.addEventListener('click', () => {
+                    const idx = parseInt(el.dataset.idx);
+                    zoomToCity(idx);
+                });
+            });
+        };
+
+        const zoomToCity = (idx) => {
+            const city = data[idx];
+            const i = aqi(city.aqi);
+
+            // Calculate city position
+            const bx = ((city.lon + 180) / 360) * canvas.width;
+            const by = ((90 - city.lat) / 180) * canvas.height;
+
+            zoomedCity = idx;
+            camera.targetX = canvas.width / 2 - bx;
+            camera.targetY = canvas.height / 2 - by;
+            camera.targetZoom = 3;
+
+            // Update zoom label
+            zoomLabelName.textContent = city.n;
+            zoomLabelAqi.textContent = city.aqi;
+            zoomLabelAqi.className = `zoom-label-aqi ${i.k}`;
+            zoomLabelStatus.textContent = i.s;
+
+            // Show/hide UI
+            setTimeout(() => zoomLabel.classList.add('show'), 300);
+            backBtn.classList.add('show');
+            citiesEl.classList.add('hidden');
+            avgContainer.style.opacity = '0';
+            label.classList.remove('show');
+            hoveredCity = null;
+        };
+
+        const zoomOut = () => {
+            zoomedCity = null;
+            camera.targetX = 0;
+            camera.targetY = 0;
+            camera.targetZoom = 1;
+
+            zoomLabel.classList.remove('show');
+            backBtn.classList.remove('show');
+            citiesEl.classList.remove('hidden');
+            avgContainer.style.opacity = '1';
+        };
+
+        backBtn.addEventListener('click', zoomOut);
+
+        // ESC to zoom out
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && zoomedCity !== null) {
+                zoomOut();
+            }
+        });
+
+        const initP = () => {
+            particles = [];
+            data.forEach((c, cityIdx) => {
+                const i = aqi(c.aqi);
+                const n = 60 + Math.floor(c.aqi / 2);
+                const bx = ((c.lon + 180) / 360) * canvas.width;
+                const by = ((90 - c.lat) / 180) * canvas.height;
+                for (let j = 0; j < n; j++) {
+                    particles.push({
+                        x: bx + (Math.random() - 0.5) * 80,
+                        y: by + (Math.random() - 0.5) * 80,
+                        bx, by,
+                        vx: (Math.random() - 0.5) * 0.3,
+                        vy: (Math.random() - 0.5) * 0.3,
+                        c: i.c,
+                        s: 1 + Math.random() * 3,
+                        a: 0.4 + Math.random() * 0.5,
+                        q: c.aqi,
+                        cityIdx,
+                        pulse: Math.random() * Math.PI * 2,
+                        pulseSpeed: 0.02 + Math.random() * 0.03,
+                        // Trail history
+                        trail: []
+                    });
+                }
+            });
+        };
+
+        const TRAIL_LENGTH = 8;
+
+        const draw = () => {
+            // Smooth camera movement
+            camera.x += (camera.targetX - camera.x) * 0.08;
+            camera.y += (camera.targetY - camera.y) * 0.08;
+            camera.zoom += (camera.targetZoom - camera.zoom) * 0.08;
+
+            // Clear with slight fade for trail effect base
+            ctx.fillStyle = '#000';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            ctx.save();
+            ctx.translate(canvas.width / 2, canvas.height / 2);
+            ctx.scale(camera.zoom, camera.zoom);
+            ctx.translate(-canvas.width / 2 + camera.x, -canvas.height / 2 + camera.y);
+
+            // Track hovered city center for label
+            let hoverX = 0, hoverY = 0, hoverCount = 0;
+
+            particles.forEach(p => {
+                // Store previous position for trail
+                p.trail.unshift({ x: p.x, y: p.y });
+                if (p.trail.length > TRAIL_LENGTH) p.trail.pop();
+
+                p.x += p.vx;
+                p.y += p.vy;
+                const dx = p.bx - p.x, dy = p.by - p.y;
+                const d = Math.sqrt(dx * dx + dy * dy);
+                if (d > 50) { p.vx += dx * 0.004; p.vy += dy * 0.004; }
+                p.vx += (Math.random() - 0.5) * (p.q / 800);
+                p.vy += (Math.random() - 0.5) * (p.q / 800);
+                p.vx *= 0.96; p.vy *= 0.96;
+
+                // Pulsing effect
+                p.pulse += p.pulseSpeed;
+                const pulseFactor = 0.7 + 0.3 * Math.sin(p.pulse);
+
+                // Check if this city is hovered or zoomed
+                const isHovered = hoveredCity === p.cityIdx;
+                const isZoomed = zoomedCity === p.cityIdx;
+                const brightness = (isHovered || isZoomed) ? 1.5 : (zoomedCity !== null && !isZoomed ? 0.2 : 1);
+                const sizeBoost = (isHovered || isZoomed) ? 1.5 : 1;
+
+                if (isHovered && zoomedCity === null) {
+                    hoverX += p.x;
+                    hoverY += p.y;
+                    hoverCount++;
+                }
+
+                const alpha = p.a * pulseFactor * brightness;
+                const size = p.s * sizeBoost;
+
+                // Draw trail
+                if (p.trail.length > 1) {
+                    for (let i = 0; i < p.trail.length - 1; i++) {
+                        const t = p.trail[i];
+                        const trailAlpha = alpha * (1 - i / TRAIL_LENGTH) * 0.4;
+                        const trailSize = size * (1 - i / TRAIL_LENGTH) * 0.7;
+
+                        ctx.beginPath();
+                        ctx.arc(t.x, t.y, trailSize, 0, Math.PI * 2);
+                        ctx.fillStyle = `rgba(${p.c[0]},${p.c[1]},${p.c[2]},${trailAlpha})`;
+                        ctx.fill();
+                    }
+                }
+
+                // Draw glow (larger, more transparent)
+                const glowSize = size * 3;
+                const gradient = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, glowSize);
+                gradient.addColorStop(0, `rgba(${p.c[0]},${p.c[1]},${p.c[2]},${alpha * 0.6})`);
+                gradient.addColorStop(0.4, `rgba(${p.c[0]},${p.c[1]},${p.c[2]},${alpha * 0.2})`);
+                gradient.addColorStop(1, `rgba(${p.c[0]},${p.c[1]},${p.c[2]},0)`);
+
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, glowSize, 0, Math.PI * 2);
+                ctx.fillStyle = gradient;
+                ctx.fill();
+
+                // Draw core (bright center)
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, size, 0, Math.PI * 2);
+                ctx.fillStyle = `rgba(${Math.min(255, p.c[0] + 50)},${Math.min(255, p.c[1] + 50)},${Math.min(255, p.c[2] + 50)},${alpha})`;
+                ctx.fill();
+            });
+
+            ctx.restore();
+
+            // Update label position (only when not zoomed)
+            if (hoveredCity !== null && hoverCount > 0 && zoomedCity === null) {
+                const city = data[hoveredCity];
+                const i = aqi(city.aqi);
+                labelName.textContent = city.n;
+                labelAqi.textContent = city.aqi;
+                labelAqi.className = `label-aqi ${i.k}`;
+
+                // Transform coordinates through camera
+                let avgX = hoverX / hoverCount;
+                let avgY = hoverY / hoverCount;
+
+                // Apply camera transform
+                avgX = (avgX + camera.x - canvas.width / 2) * camera.zoom + canvas.width / 2;
+                avgY = (avgY + camera.y - canvas.height / 2) * camera.zoom + canvas.height / 2;
+
+                label.style.left = (avgX + 20) + 'px';
+                label.style.top = (avgY - 30) + 'px';
+                label.classList.add('show');
+            }
+
+            requestAnimationFrame(draw);
+        };
+
+        fetch50();
+        draw();
+        setInterval(fetch50, 600000);
+    </script>
+</body>
+
+</html>
+
+Can These Files Be Used for Data Visualizations? - Manus
