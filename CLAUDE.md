@@ -1,4 +1,7 @@
 # CLAUDE.md
+<!-- Navigation: ~/html/datavis/poems/air/CLAUDE.md -->
+<!-- Parent: ~/html/datavis/poems/CLAUDE.md -->
+<!-- Map: ~/CLAUDE_MAP.md -->
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 

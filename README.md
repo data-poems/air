@@ -1,11 +1,14 @@
 # AIR
 
+[![Live Site](https://img.shields.io/badge/live-dr.eamer.dev-00ffaa)](https://dr.eamer.dev/datavis/poems/air/)
+[![MIT License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+
 Real-time air quality map for the world's 100 largest cities. Updates every 30 seconds with fresh AQI data from Open-Meteo. Click any city for detailed pollutant breakdowns (PM2.5, PM10, ozone, nitrogen dioxide).
 
 ## Features
 
 - **Live data**: Open-Meteo Air Quality API
-- **100 largest cities**: Global coverage from Beijing to São Paulo
+- **100 largest cities**: Global coverage from Beijing to Sao Paulo
 - **Real-time updates**: Fresh data every 30 seconds
 - **Interactive map**: Pan, zoom, click for details
 - **Color coding**:
@@ -44,5 +47,8 @@ https://open-meteo.com/en/docs/air-quality-api
 
 ## Author
 
-Luke Steuber
-https://lukesteuber.com
+Luke Steuber — [dr.eamer.dev](https://dr.eamer.dev) — [@lukesteuber.com](https://bsky.app/profile/lukesteuber.com)
+
+## License
+
+MIT
